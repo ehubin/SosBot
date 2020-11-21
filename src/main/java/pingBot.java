@@ -1,43 +1,54 @@
 import discord4j.core.*;
 import discord4j.core.event.domain.message.MessageCreateEvent;
+import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
-import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.core.object.entity.channel.TextChannel;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-enum Step { registration,power,finalized,cancel };
+enum Step { registration,power,finalized,cancel }
 public class pingBot {
+    static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     public static void main(final String[] args) {
-        final String token = "Nzc4MjkwNTkyNDc1NTEyODYy.X7P1mQ.lbAwjRoHpVVC0cfVDpqGHe-swtw";
+        final String token = System.getenv("TOKEN");
         final DiscordClient client = DiscordClient.create(token);
         final GatewayDiscordClient gateway = client.login().block();
-        final String DbFile="DBfile.txt";
+
         String eventDetails="Sunday 20:00 utc";
 
         BufferedWriter db=null;
-        initFromFile(DbFile);
+        initFromFile();
         try{
             db = new BufferedWriter(new FileWriter(DbFile,true));
         } catch(Exception e) {
-            System.err.println(e);
+            e.printStackTrace();
         }
         BufferedWriter finalDb = db;
+        if(gateway==null) {
+            System.err.println("Failed to initialize discord Gateway");
+            System.exit(-1);
+        }
         gateway.on(MessageCreateEvent.class).subscribe(event -> {
             final Message message = event.getMessage();
             final TextChannel channel = ((TextChannel)message.getChannel().block());
-            if(channel.getName().equals("reservoir-raid")) {
-
-                String user = null;
-                Optional<String> o = message.getAuthorAsMember().block().getNickname();
-                if (o.isPresent()) user = o.get();
-                else user = message.getUserData().username();
+            if(channel == null) {
+                System.err.println("Error fetching channel info");
+                return;
+            }
+            final String channelName =channel.getName();
+            if(channelName!= null && channelName.equals("reservoir-raid")) {
+                String user;
+                Member m = message.getAuthorAsMember().block();
+                if(m==null) {
+                    System.err.println("Error fetching member info");
+                    return;
+                }
+                user = m.getNickname().orElseGet(() -> message.getUserData().username());
                 System.out.println("==>" + message.getContent() + ", " + user);
                 State state = sessions.get(user);
                 String content = message.getContent().trim();
@@ -46,14 +57,13 @@ public class pingBot {
                         channel.createMessage("Nobody registered yet").block();
                         return;
                     }
-                    StringBuffer sb = new StringBuffer("Registered so far for ").append(eventDetails).append("\n");
+                    StringBuilder sb = new StringBuilder("Registered so far for ").append(eventDetails).append("\n");
                     for (String s : registered) sb.append(s).append("\n");
                     channel.createMessage(sb.toString()).block();
                 } else if (state == null || state.timedOut()) {
                     if (content.equalsIgnoreCase("register")) {
                         channel.createMessage(user + " can you commit to be online " + eventDetails + "(yes/no)").block();
                         sessions.put(user, new State(Step.registration));
-                    } else if (content.equalsIgnoreCase("list")) {
                     } else {
                         channel.createMessage("invalid command \"" + content + '"');
                     }
@@ -67,8 +77,7 @@ public class pingBot {
                 } else if (state.step == Step.cancel) {
                     if (content.equalsIgnoreCase("yes")) {
                         sessions.put(user, null);
-                        String finalUser = user;
-                        registered.removeIf((s) -> s.startsWith(finalUser));
+                        registered.removeIf((s) -> s.startsWith(user));
                         channel.createMessage(user + " your registration has been cancelled!").block();
                     } else {
                         sessions.put(user, null);
@@ -86,7 +95,8 @@ public class pingBot {
                     }
                 }  else if(state.step==Step.power) {
                     double pow=Double.MAX_VALUE;
-                    try { pow=Double.parseDouble(content); } catch (NumberFormatException nfe) {}
+                    try { pow=Double.parseDouble(content); }
+                    catch (NumberFormatException nfe) {channel.createMessage("incorrect number format "+content).block();}
                     if (pow <0.1 || pow > 200.) {
                         channel.createMessage("incorrect power value "+content).block();
                     } else {
@@ -115,10 +125,10 @@ public class pingBot {
         boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.finalized;} // 1 minute timeout
         long timestamp;
     }
-    static void initFromFile(String f) {
 
+    static void initFromFile() {
         try{
-            BufferedReader reader= new BufferedReader(new FileReader(f));
+            BufferedReader reader= new BufferedReader(new FileReader(DbFile));
             String line = reader.readLine();
             while(line != null) {
                 registered.add(line);
@@ -131,8 +141,7 @@ public class pingBot {
             }
             reader.close();
         } catch(Exception e) {
-            System.err.println(e);
-            return;
+           e.printStackTrace();
         }
     }
 }

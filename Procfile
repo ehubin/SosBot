@@ -1,1 +1,1 @@
-worker: java -cp build/classes/java/main;build/libs/* pingBot
+worker: CLASSPATH=build/classes/java/main:$(JARS=("build/libs"/*.jar); IFS=:; echo "${JARS[*]}")  &&  java -cp $CLASSPATH pingBot

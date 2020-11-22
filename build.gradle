@@ -16,7 +16,7 @@ dependencies {
 
 task copyToLib(type: Copy) {
     into "$buildDir/libs"
-    from(configurations.compile)
+    from(configurations.runtimeClasspath)
 }
 
 task stage(dependsOn: ['build', 'clean','copyToLib'])

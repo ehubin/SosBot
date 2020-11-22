@@ -1,1 +1,1 @@
-worker:java -cp build/classes/java/main pingBot
+worker: java -cp build/classes/java/main;build/libs/* pingBot

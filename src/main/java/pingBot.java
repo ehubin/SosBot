@@ -5,6 +5,7 @@ import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
 
 import java.io.*;
+import java.sql.*;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,14 +17,20 @@ public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     static final String helpStr="**register**        starts registering to event\n**list**           displays list of registered members for next event";
+    static Connection dbConnection;
+    static PreparedStatement insertP,insertE;
+    static String eventDetails="";
+
+
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
         final DiscordClient client = DiscordClient.create(token);
         final GatewayDiscordClient gateway = client.login().block();
 
-        String eventDetails="Sunday 20:00 utc";
+
 
         BufferedWriter db=null;
+        initFromDB();
         initFromFile();
         try{
             db = new BufferedWriter(new FileWriter(DbFile,true));
@@ -54,6 +61,7 @@ public class pingBot {
                 System.out.println("==>" + message.getContent() + ", " + user);
                 State state = sessions.get(user);
                 String content = message.getContent().trim();
+
                 if (content.equalsIgnoreCase("help")) {
                     channel.createMessage(helpStr).block(Duration.ofSeconds(3));
                 }
@@ -63,7 +71,7 @@ public class pingBot {
                         return;
                     }
                     StringBuilder sb = new StringBuilder("Registered so far for ").append(eventDetails).append("\n");
-                    for (String s : registered) sb.append(s).append("\n");
+                    for (Participant p : registered) sb.append(p).append("\n");
                     channel.createMessage(sb.toString()).block();
                 } else if (state == null || state.timedOut()) {
                     if (content.equalsIgnoreCase("register")) {
@@ -82,7 +90,7 @@ public class pingBot {
                 } else if (state.step == Step.cancel) {
                     if (content.equalsIgnoreCase("yes")) {
                         sessions.put(user, null);
-                        registered.removeIf((s) -> s.startsWith(user));
+                        registered.removeIf((p) -> p.name.equals(user));
                         channel.createMessage(user + " your registration has been cancelled!").block();
                     } else {
                         sessions.put(user, null);
@@ -99,20 +107,22 @@ public class pingBot {
                         channel.createMessage("registration aborted").block();
                     }
                 }  else if(state.step==Step.power) {
-                    double pow=Double.MAX_VALUE;
-                    try { pow=Double.parseDouble(content); }
+                    float pow=Float.MAX_VALUE;
+                    try { pow=Float.parseFloat(content); }
                     catch (NumberFormatException nfe) {channel.createMessage("incorrect number format "+content).block();}
                     if (pow <0.1 || pow > 200.) {
                         channel.createMessage("incorrect power value "+content).block();
                     } else {
-                        String registration=user+"\t"+pow;
+                        Participant p=new Participant(user,pow);
+
                         try {
-                            finalDb.write(registration+"\n");
+                            finalDb.write(p+"\n");
                             finalDb.flush();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
-                        registered.add(registration);
+                        insertParticipant(p);
+                        registered.add(p);
                         sessions.put(user,new State(Step.finalized));
                         channel.createMessage(user + " your registration is confirmed we count on you!").block();
                     }
@@ -122,7 +132,7 @@ public class pingBot {
 
         gateway.onDisconnect().block();
     }
-    static ArrayList<String> registered = new ArrayList<>();
+    static ArrayList<Participant> registered = new ArrayList<>();
     static HashMap<String,State> sessions = new HashMap<>();
     static class State {
         Step step;
@@ -136,11 +146,15 @@ public class pingBot {
             BufferedReader reader= new BufferedReader(new FileReader(DbFile));
             String line = reader.readLine();
             while(line != null) {
-                registered.add(line);
                 Matcher m=registerPattern.matcher(line);
                 if(m.find()) {
-                    System.out.println("restoring >" + line + "|" + m.group(1) + "|" + m.group(2));
-                    sessions.put(m.group(1),new State(Step.finalized));
+
+                    float pow=Float.parseFloat(m.group(2));
+                    if(!sessions.containsKey(m.group(1))) {
+                        System.out.println("restoring >" + line + "|" + m.group(1) + "|" + m.group(2));
+                        sessions.put(m.group(1), new State(Step.finalized));
+                        registered.add(new Participant(m.group(1), pow));
+                    }
                 }
                 line = reader.readLine();
             }
@@ -148,6 +162,62 @@ public class pingBot {
         } catch(Exception e) {
            e.printStackTrace();
         }
+    }
+    static void insertParticipant(Participant p) {
+        try {
+            insertP.setString(1, p.name);
+            insertP.setFloat(2, p.power);
+            insertP.executeUpdate();
+        } catch(SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    static void insertEvent(String s) {
+        try {
+            insertE.setString(1, s);
+            insertE.executeUpdate();
+        } catch(SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    static void initFromDB() {
+        try {
+            Statement stmt = getConnection().createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT name FROM event");
+            if(rs.next()) { // read first event
+                eventDetails = rs.getString("name");
+            } else {
+                eventDetails="";
+            }
+            rs=stmt.executeQuery("SELECT name,power FROM participants");
+            while(rs.next()) {
+                String player=rs.getString("name");
+                float power= rs.getFloat("power");
+                if(!sessions.containsKey(player)) {
+                    sessions.put(player, new State(Step.finalized));
+                    registered.add(new Participant(player, power));
+                }
+            }
+
+        } catch(SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static Connection getConnection() throws  SQLException {
+        if(dbConnection==null) {
+            String dbUrl = System.getenv("JDBC_DATABASE_URL");
+            Connection res=DriverManager.getConnection(dbUrl);
+            insertP = res.prepareStatement("INSERT INTO participants(name,power) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
+            insertE = res.prepareStatement("INSERT INTO event(name) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
+        }
+        return dbConnection;
+    }
+    static class Participant {
+        String name;
+        float power;
+        Participant(String n,float pow) {name=n;power=pow; }
+        public String toString() { return name+"\t"+power;}
     }
 }
 

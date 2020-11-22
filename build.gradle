@@ -14,5 +14,10 @@ dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 
-task stage(dependsOn: ['build', 'clean'])
+task copyToLib(type: Copy) {
+    into "$buildDir/libs"
+    from(configurations.compile)
+}
+
+task stage(dependsOn: ['build', 'clean','copyToLib'])
 build.mustRunAfter clean

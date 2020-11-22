@@ -15,7 +15,7 @@ enum Step { registration,power,finalized,cancel }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
-    static final String helpStr="register   starts registering to event\nlist   displays list of registered members for next event";
+    static final String helpStr="**register**\t\tstarts registering to event\n**list**\tdisplays list of registered members for next event";
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
         final DiscordClient client = DiscordClient.create(token);

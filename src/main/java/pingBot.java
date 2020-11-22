@@ -5,6 +5,7 @@ import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
 
 import java.io.*;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.regex.Matcher;
@@ -14,6 +15,7 @@ enum Step { registration,power,finalized,cancel }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
+    static final String helpStr="register   starts registering to event\nlist   displays list of registered members for next event";
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
         final DiscordClient client = DiscordClient.create(token);
@@ -52,7 +54,10 @@ public class pingBot {
                 System.out.println("==>" + message.getContent() + ", " + user);
                 State state = sessions.get(user);
                 String content = message.getContent().trim();
-                if (content.equalsIgnoreCase("list")) {
+                if (content.equalsIgnoreCase("help")) {
+                    channel.createMessage(helpStr).block(Duration.ofSeconds(3));
+                }
+                else if (content.equalsIgnoreCase("list")) {
                     if (registered.size() == 0) {
                         channel.createMessage("Nobody registered yet").block();
                         return;

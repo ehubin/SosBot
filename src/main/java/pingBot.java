@@ -207,9 +207,9 @@ public class pingBot {
     private static Connection getConnection() throws  SQLException {
         if(dbConnection==null) {
             String dbUrl = System.getenv("JDBC_DATABASE_URL");
-            Connection res=DriverManager.getConnection(dbUrl);
-            insertP = res.prepareStatement("INSERT INTO participants(name,power) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
-            insertE = res.prepareStatement("INSERT INTO event(name) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
+            dbConnection=DriverManager.getConnection(dbUrl);
+            insertP = dbConnection.prepareStatement("INSERT INTO participants(name,power) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
+            insertE = dbConnection.prepareStatement("INSERT INTO event(name) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
         }
         return dbConnection;
     }

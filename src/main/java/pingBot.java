@@ -38,7 +38,7 @@ public class pingBot {
 
         BufferedWriter db=null;
         initFromDB();
-        initFromFile();
+        //initFromFile();
         try{
             db = new BufferedWriter(new FileWriter(DbFile,true));
         } catch(Exception e) {
@@ -96,6 +96,7 @@ public class pingBot {
                             participant.setStep(Step.registration);
                             channel.createMessage(user + " can you commit to be online " + eventDetails + "(yes/no)").block(BLOCK);
                         }
+                        return;
                     case "cancel":
                         if(participant.registered) {
                             participant.setStep(Step.cancel);
@@ -104,6 +105,7 @@ public class pingBot {
                             participant.setStep(Step.begin);
                             channel.createMessage(user + " You are not registered! No need to cancel!").block(BLOCK);
                         }
+                        return;
                     case "create":
                         participant.setStep(Step.create);
                         channel.createMessage(user + "Please enter event date (free text including date and utc time)").block(BLOCK);
@@ -168,8 +170,8 @@ public class pingBot {
                                     }
                                     insertParticipant(participant);
                                     channel.createMessage(user + " your registration is confirmed we count on you!").block(BLOCK);
-                                    return;
                                 }
+                                return;
                             case cancel:
                                 participant.setStep(Step.begin);
                                 channel.createMessage(user + " cancellation aborted you are still registered").block(BLOCK);
@@ -177,6 +179,7 @@ public class pingBot {
                             case registration:
                                 participant.setStep(Step.begin);
                                 channel.createMessage("registration aborted").block(BLOCK);
+                                return;
                             case create:
                                 newEventDetails = rawContent.trim();
                                 participant.setStep(Step.confirmCreate);
@@ -242,8 +245,11 @@ public class pingBot {
             while(rs.next()) {
                 String player=rs.getString("name");
                 float power= rs.getFloat("power");
+                Participant p;
                 if(!sessions.containsKey(player)) {
-                    sessions.put(player, new Participant(player, power));
+                    p=new Participant(player, power);
+                    p.registered=true;
+                    sessions.put(player, p);
                 }
             }
 

@@ -7,19 +7,26 @@ import discord4j.core.object.entity.channel.TextChannel;
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-enum Step { registration,power,finalized,cancel }
+//Command state machine steps
+enum Step { begin,registration,power,cancel,create, confirmCreate, stopReg }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
-    static final String helpStr="**register**        starts registering to event\n**list**           displays list of registered members for next event";
+    static final String helpStr="```register\t\tstarts registering to event\n" +
+                                    "list\t\tdisplays list of registered members for next event\n"+
+                                    "create\t\tcreate a new event\n"+
+                                    "stopReg\t\tclose event registration process\n" +
+                                    "teams\t\tgive a breakdown of teams```";
     static Connection dbConnection;
-    static PreparedStatement insertP,insertE;
-    static String eventDetails="";
+    static PreparedStatement insertP,insertE,deleteP;
+    static String eventDetails="",newEventDetails="";
+    static final Duration BLOCK=Duration.ofSeconds(3);
 
 
     public static void main(final String[] args) {
@@ -59,87 +66,129 @@ public class pingBot {
                 }
                 user = m.getNickname().orElseGet(() -> message.getUserData().username());
                 System.out.println("==>" + message.getContent() + ", " + user);
-                State state = sessions.get(user);
-                String content = message.getContent().trim();
+                Participant participant = sessions.get(user);
+                if(participant==null) { participant=new Participant(user,-1); sessions.put(user,participant);}
+                String rawContent = message.getContent(),content=rawContent.trim().toLowerCase();
 
-                if (content.equalsIgnoreCase("help")) {
-                    channel.createMessage(helpStr).block(Duration.ofSeconds(3));
-                }
-                else if (content.equalsIgnoreCase("list")) {
-                    if (registered.size() == 0) {
-                        channel.createMessage("Nobody registered yet").block();
+                switch(content) {
+                    case "help":
+                        channel.createMessage(helpStr).block(BLOCK);
+                        participant.setStep(Step.begin);
                         return;
-                    }
-                    StringBuilder sb = new StringBuilder("Registered so far for ").append(eventDetails).append("\n");
-                    for (Participant p : registered) sb.append(p).append("\n");
-                    channel.createMessage(sb.toString()).block();
-                } else if (state == null || state.timedOut()) {
-                    if (content.equalsIgnoreCase("register")) {
-                        channel.createMessage(user + " can you commit to be online " + eventDetails + "(yes/no)").block();
-                        sessions.put(user, new State(Step.registration));
-                    } else {
-                        channel.createMessage("invalid command \"" + content + '"');
-                    }
-                } else if (state.step == Step.finalized) {
-                    if (content.equalsIgnoreCase("register")) {
-                        channel.createMessage(user + " you are already registered!").block();
-                    } else if (content.equalsIgnoreCase("cancel")) {
-                        sessions.put(user, new State(Step.cancel));
-                        channel.createMessage(user + " Do you really want to cancel your registration for " + eventDetails + " (yes/no)").block();
-                    }
-                } else if (state.step == Step.cancel) {
-                    if (content.equalsIgnoreCase("yes")) {
-                        sessions.put(user, null);
-                        registered.removeIf((p) -> p.name.equals(user));
-                        channel.createMessage(user + " your registration has been cancelled!").block();
-                    } else {
-                        sessions.put(user, null);
-                        channel.createMessage(user + " cancellation aborted you are still registered").block();
-                    }
-                }
-                else if(state.step==Step.registration) {
-                    if(content.equalsIgnoreCase("yes")) {
-                        sessions.put(user,new State(Step.power));
-                        channel.createMessage("Please enter your current overall Battle Power(just  number in millions) to help creating balanced teams").block();
-
-                    } else {
-                        sessions.put(user,null);
-                        channel.createMessage("registration aborted").block();
-                    }
-                }  else if(state.step==Step.power) {
-                    float pow=Float.MAX_VALUE;
-                    try { pow=Float.parseFloat(content); }
-                    catch (NumberFormatException nfe) {channel.createMessage("incorrect number format "+content).block();}
-                    if (pow <0.1 || pow > 200.) {
-                        channel.createMessage("incorrect power value "+content).block();
-                    } else {
-                        Participant p=new Participant(user,pow);
-
-                        try {
-                            finalDb.write(p+"\n");
-                            finalDb.flush();
-                        } catch (IOException e) {
-                            e.printStackTrace();
+                    case "list":
+                        List<Participant> registered = sessions.values().stream()
+                                .filter(i -> i.registered)
+                                .collect(Collectors.toList());
+                        if (registered.size() == 0) {
+                            participant.setStep(Step.begin);
+                            channel.createMessage("Nobody registered yet").block(BLOCK);
+                            return;
                         }
-                        insertParticipant(p);
-                        registered.add(p);
-                        sessions.put(user,new State(Step.finalized));
-                        channel.createMessage(user + " your registration is confirmed we count on you!").block();
-                    }
+                        StringBuilder sb = new StringBuilder("Registered so far for ").append(eventDetails).append("\n");
+                        for (Participant p : registered) sb.append(p).append("\n");
+                        participant.setStep(Step.begin);
+                        channel.createMessage(sb.toString()).block(BLOCK);
+                        return;
+                    case "register":
+                        if (participant.registered) {
+                                channel.createMessage(user + " you are already registered!").block(BLOCK);
+                        } else {
+                            participant.setStep(Step.registration);
+                            channel.createMessage(user + " can you commit to be online " + eventDetails + "(yes/no)").block(BLOCK);
+                        }
+                    case "cancel":
+                        if(participant.registered) {
+                            participant.setStep(Step.cancel);
+                            channel.createMessage(user + " Do you really want to cancel your registration for " + eventDetails + " (yes/no)").block(BLOCK);
+                        } else {
+                            participant.setStep(Step.begin);
+                            channel.createMessage(user + " You are not registered! No need to cancel!").block(BLOCK);
+                        }
+                    case "create":
+                        participant.setStep(Step.create);
+                        channel.createMessage(user + "Please enter event date (free text including date and utc time)").block(BLOCK);
+                        return;
+                    case "yes":
+                        switch(participant.step) {
+                            case registration:
+                                if(participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " registration timed out!").block(BLOCK);
+                                    return;
+                                }
+                                participant.setStep(Step.power);
+                                channel.createMessage("Please enter your current overall Battle Power(just  number in millions) to help creating balanced teams").block(BLOCK);
+                                return;
+                            case cancel:
+                                if(participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " cancellation timed out!").block(BLOCK);
+                                    return;
+                                }
+                                participant.registered=false;
+                                participant.setStep(Step.begin);
+                                channel.createMessage(user + " your registration has been cancelled!").block(BLOCK);
+                                return;
+                            case confirmCreate:
+                                if(participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " creation timed out!").block(BLOCK);
+                                    return;
+                                }
+                                participant.setStep(Step.begin);
+                                channel.createMessage("Event \""+newEventDetails+"\" now live!").block(BLOCK);
+                                eventDetails=newEventDetails;
+                                sessions.clear();
+                                insertEvent(newEventDetails);
+                                return;
+                        }
+                    default:
+                        switch(participant.step) {
+                            case power:
+                                if(participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " registration timed out!").block(BLOCK);
+                                    return;
+                                }
+                                float pow;
+                                try { pow=Float.parseFloat(content); }
+                                catch (NumberFormatException nfe) {channel.createMessage("incorrect number format "+content).block(BLOCK); return;}
+                                if (pow <0.1 || pow > 300.) {
+                                    channel.createMessage("incorrect power value "+content).block(BLOCK);
+                                } else {
+                                    participant.power = pow;
+                                    participant.setStep(Step.begin);
+                                    participant.registered=true;
+                                    try {
+                                        finalDb.write(participant + "\n");
+                                        finalDb.flush();
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                        return;
+                                    }
+                                    insertParticipant(participant);
+                                    channel.createMessage(user + " your registration is confirmed we count on you!").block(BLOCK);
+                                    return;
+                                }
+                            case cancel:
+                                participant.setStep(Step.begin);
+                                channel.createMessage(user + " cancellation aborted you are still registered").block(BLOCK);
+                                return;
+                            case registration:
+                                participant.setStep(Step.begin);
+                                channel.createMessage("registration aborted").block(BLOCK);
+                            case create:
+                                newEventDetails = rawContent.trim();
+                                participant.setStep(Step.confirmCreate);
+                                channel.createMessage("do you confirm you want to create new RR event \""+newEventDetails+"\" (yes/no)").block(BLOCK);
+                        }
                 }
             }
         });
-
         gateway.onDisconnect().block();
     }
-    static ArrayList<Participant> registered = new ArrayList<>();
-    static HashMap<String,State> sessions = new HashMap<>();
-    static class State {
-        Step step;
-        State(Step s) { step = s; timestamp = System.currentTimeMillis();}
-        boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.finalized;} // 1 minute timeout
-        long timestamp;
-    }
+    //static ArrayList<Participant> registered = new ArrayList<>();
+    static HashMap<String,Participant> sessions = new HashMap<>();
 
     static void initFromFile() {
         try{
@@ -152,8 +201,7 @@ public class pingBot {
                     float pow=Float.parseFloat(m.group(2));
                     if(!sessions.containsKey(m.group(1))) {
                         System.out.println("restoring >" + line + "|" + m.group(1) + "|" + m.group(2));
-                        sessions.put(m.group(1), new State(Step.finalized));
-                        registered.add(new Participant(m.group(1), pow));
+                        sessions.put(m.group(1),new Participant(m.group(1), pow));
                     }
                 }
                 line = reader.readLine();
@@ -176,6 +224,7 @@ public class pingBot {
         try {
             insertE.setString(1, s);
             insertE.executeUpdate();
+            deleteP.executeUpdate();
         } catch(SQLException e) {
             e.printStackTrace();
         }
@@ -194,8 +243,7 @@ public class pingBot {
                 String player=rs.getString("name");
                 float power= rs.getFloat("power");
                 if(!sessions.containsKey(player)) {
-                    sessions.put(player, new State(Step.finalized));
-                    registered.add(new Participant(player, power));
+                    sessions.put(player, new Participant(player, power));
                 }
             }
 
@@ -210,12 +258,18 @@ public class pingBot {
             dbConnection=DriverManager.getConnection(dbUrl);
             insertP = dbConnection.prepareStatement("INSERT INTO participants(name,power) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
             insertE = dbConnection.prepareStatement("INSERT INTO event(name) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
+            deleteP = dbConnection.prepareStatement("delete * from participants");
         }
         return dbConnection;
     }
     static class Participant {
         String name;
         float power;
+        boolean registered=false;
+        Step step=Step.begin;
+        long timestamp;
+        void setStep(Step s) { step=s; timestamp=System.currentTimeMillis();}
+        boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.begin;}
         Participant(String n,float pow) {name=n;power=pow; }
         public String toString() { return name+"\t"+power;}
     }

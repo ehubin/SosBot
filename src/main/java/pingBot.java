@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 //Command state machine steps
-enum Step { begin,registration,power,cancel,create, confirmCreate, stopReg }
+enum Step { begin,registration,power,cancel,create, confirmCreate }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
@@ -24,7 +24,7 @@ public class pingBot {
                                     "stopReg\t\tclose event registration process\n" +
                                     "teams\t\tgive a breakdown of teams```";
     static Connection dbConnection;
-    static PreparedStatement insertP,insertE,deleteP;
+    static PreparedStatement insertP,insertE,deleteP,deleteOneP;
     static String eventDetails="",newEventDetails="";
     static final Duration BLOCK=Duration.ofSeconds(3);
 
@@ -129,6 +129,7 @@ public class pingBot {
                                 }
                                 participant.registered=false;
                                 participant.setStep(Step.begin);
+                                deleteFromDB(participant);
                                 channel.createMessage(user + " your registration has been cancelled!").block(BLOCK);
                                 return;
                             case confirmCreate:
@@ -193,6 +194,7 @@ public class pingBot {
     //static ArrayList<Participant> registered = new ArrayList<>();
     static HashMap<String,Participant> sessions = new HashMap<>();
 
+    @SuppressWarnings("unused")
     static void initFromFile() {
         try{
             BufferedReader reader= new BufferedReader(new FileReader(DbFile));
@@ -257,7 +259,14 @@ public class pingBot {
             e.printStackTrace();
         }
     }
-
+    static void deleteFromDB(Participant p) {
+        try {
+           deleteOneP.setString(1,p.name);
+           deleteOneP.executeUpdate();
+        } catch(SQLException e) {
+            e.printStackTrace();
+        }
+    }
     private static Connection getConnection() throws  SQLException {
         if(dbConnection==null) {
             String dbUrl = System.getenv("JDBC_DATABASE_URL");
@@ -265,6 +274,7 @@ public class pingBot {
             insertP = dbConnection.prepareStatement("INSERT INTO participants(name,power) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
             insertE = dbConnection.prepareStatement("INSERT INTO event(name) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
             deleteP = dbConnection.prepareStatement("delete * from participants");
+            deleteOneP =  dbConnection.prepareStatement("delete from participants where name=?",Statement.RETURN_GENERATED_KEYS);
         }
         return dbConnection;
     }

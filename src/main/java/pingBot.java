@@ -18,11 +18,11 @@ enum Step { begin,registration,power,cancel,create, confirmCreate }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
-    static final String helpStr="```register\t\tstarts registering to event\n" +
-                                    "list\t\tdisplays list of registered members for next event\n"+
-                                    "create\t\tcreate a new event\n"+
-                                    "stopReg\t\tclose event registration process\n" +
-                                    "teams\t\tgive a breakdown of teams```";
+    static final String helpStr= "```register   starts registering to event\n" +
+                                    "list       displays list of registered members for next event\n"+
+                                    "create     create a new event\n"+
+                                    "stopReg    close event registration process\n" +
+                                    "teams      give a breakdown of teams```";
     static Connection dbConnection;
     static PreparedStatement insertP,insertE,deleteP,deleteOneP;
     static String eventDetails="",newEventDetails="";

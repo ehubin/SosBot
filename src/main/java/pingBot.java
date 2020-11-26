@@ -260,7 +260,7 @@ public class pingBot {
     }
     static void closeEvent(Event e) {
         try {
-            insertE.setString(1, e.name);
+            closeE.setString(1, e.name);
             closeE.executeUpdate();
         } catch(SQLException ex) {
             ex.printStackTrace();

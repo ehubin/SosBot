@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 //Command state machine steps
-enum Step { begin,registration,power,cancel,create, closeReg, confirmCreate }
+enum Step { begin,registration,power,cancel,create, confirmCreate, closeReg }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
@@ -108,11 +108,11 @@ public class pingBot {
                         return;
                     case "create":
                         participant.setStep(Step.create);
-                        channel.createMessage(user + "Please enter event date (free text including date and utc time)").block(BLOCK);
+                        channel.createMessage(user + " please enter event date (free text including date and utc time)").block(BLOCK);
                         return;
                     case "closereg":
                         participant.setStep(Step.closeReg);
-                        channel.createMessage(user + "Are you sure you want to stop registration for "+theEvent+"(yes/no)" ).block(BLOCK);
+                        channel.createMessage(user + " are you sure you want to stop registration for "+theEvent+"(yes/no)" ).block(BLOCK);
                         return;
                     case "yes":
                         switch(participant.step) {
@@ -143,11 +143,12 @@ public class pingBot {
                                     return;
                                 }
                                 participant.setStep(Step.begin);
-                                channel.createMessage("Event \""+theEvent+"\" now live!").block(BLOCK);
+
                                 theEvent=theNewEvent;
                                 theNewEvent=new Event();
                                 sessions.clear();
                                 insertEvent(theEvent);
+                                channel.createMessage("Event \""+theEvent+"\" now live!").block(BLOCK);
                                 return;
                             case closeReg:
                                 if(participant.timedOut()) {

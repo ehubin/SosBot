@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 //Command state machine steps
-enum Step { begin,registration,power,cancel,create, confirmCreate }
+enum Step { begin,registration,power,cancel,create, stopReg, confirmCreate }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
@@ -24,10 +24,10 @@ public class pingBot {
                                     "stopReg    close event registration process\n" +
                                     "teams      give a breakdown of teams```";
     static Connection dbConnection;
-    static PreparedStatement insertP,insertE,deleteP,deleteOneP;
-    static String eventDetails="",newEventDetails="";
+    static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE;
+    //static String eventDetails="",newEventDetails="";
     static final Duration BLOCK=Duration.ofSeconds(3);
-
+    static Event theEvent=new Event(),theNewEvent=new Event();
 
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
@@ -84,7 +84,7 @@ public class pingBot {
                             channel.createMessage("Nobody registered yet").block(BLOCK);
                             return;
                         }
-                        StringBuilder sb = new StringBuilder("Registered so far for ").append(eventDetails).append("\n");
+                        StringBuilder sb = new StringBuilder("Registered so far for ").append(theEvent).append("\n");
                         for (Participant p : registered) sb.append(p).append("\n");
                         participant.setStep(Step.begin);
                         channel.createMessage(sb.toString()).block(BLOCK);
@@ -94,13 +94,13 @@ public class pingBot {
                                 channel.createMessage(user + " you are already registered!").block(BLOCK);
                         } else {
                             participant.setStep(Step.registration);
-                            channel.createMessage(user + " can you commit to be online " + eventDetails + "(yes/no)").block(BLOCK);
+                            channel.createMessage(user + " can you commit to be online " + theEvent + "(yes/no)").block(BLOCK);
                         }
                         return;
                     case "cancel":
                         if(participant.registered) {
                             participant.setStep(Step.cancel);
-                            channel.createMessage(user + " Do you really want to cancel your registration for " + eventDetails + " (yes/no)").block(BLOCK);
+                            channel.createMessage(user + " Do you really want to cancel your registration for " + theEvent + " (yes/no)").block(BLOCK);
                         } else {
                             participant.setStep(Step.begin);
                             channel.createMessage(user + " You are not registered! No need to cancel!").block(BLOCK);
@@ -109,6 +109,10 @@ public class pingBot {
                     case "create":
                         participant.setStep(Step.create);
                         channel.createMessage(user + "Please enter event date (free text including date and utc time)").block(BLOCK);
+                        return;
+                    case "stopreg":
+                        participant.setStep(Step.stopReg);
+                        channel.createMessage(user + "Are you sure you want to stop registration for "+theEvent+"(yes/no)" ).block(BLOCK);
                         return;
                     case "yes":
                         switch(participant.step) {
@@ -139,10 +143,23 @@ public class pingBot {
                                     return;
                                 }
                                 participant.setStep(Step.begin);
-                                channel.createMessage("Event \""+newEventDetails+"\" now live!").block(BLOCK);
-                                eventDetails=newEventDetails;
+                                channel.createMessage("Event \""+theEvent+"\" now live!").block(BLOCK);
+                                theEvent=theNewEvent;
+                                theNewEvent=new Event();
                                 sessions.clear();
-                                insertEvent(newEventDetails);
+                                insertEvent(theEvent);
+                                return;
+                            case stopReg:
+                                if(participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " stop registration timed out!").block(BLOCK);
+                                    return;
+                                }
+                                participant.setStep(Step.begin);
+                                // update DB
+                                theEvent.active=false;
+                                closeEvent(theEvent);
+                                channel.createMessage("Event \""+theEvent+"\" now closed for registration! you can still get teams or list of participants").block(BLOCK);
                                 return;
                         }
                     default:
@@ -182,9 +199,9 @@ public class pingBot {
                                 channel.createMessage("registration aborted").block(BLOCK);
                                 return;
                             case create:
-                                newEventDetails = rawContent.trim();
+                                theNewEvent.name = rawContent.trim();
                                 participant.setStep(Step.confirmCreate);
-                                channel.createMessage("do you confirm you want to create new RR event \""+newEventDetails+"\" (yes/no)").block(BLOCK);
+                                channel.createMessage("do you confirm you want to create new RR event \""+theNewEvent+"\" (yes/no)").block(BLOCK);
                         }
                 }
             }
@@ -225,23 +242,42 @@ public class pingBot {
             e.printStackTrace();
         }
     }
-    static void insertEvent(String s) {
+    static class Event {
+        String name;
+        boolean active;
+        public String toString() { return name+(active?"":"*");}
+    }
+    static void insertEvent(Event e) {
         try {
-            insertE.setString(1, s);
+            deleteE.executeUpdate();
+            insertE.setString(1, e.name);
+            insertE.setBoolean(2, e.active);
             insertE.executeUpdate();
             deleteP.executeUpdate();
-        } catch(SQLException e) {
-            e.printStackTrace();
+        } catch(SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+    static void closeEvent(Event e) {
+        try {
+            insertE.setString(1, e.name);
+            closeE.executeUpdate();
+        } catch(SQLException ex) {
+            ex.printStackTrace();
         }
     }
     static void initFromDB() {
         try {
             Statement stmt = getConnection().createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT name FROM event");
+            ResultSet rs = stmt.executeQuery("SELECT name,active FROM event");
             if(rs.next()) { // read first event
-                eventDetails = rs.getString("name");
+                Event e=new Event();
+                e.name=rs.getString("name");
+                e.active=rs.getBoolean("active");
+                theEvent = e;
+
             } else {
-                eventDetails="";
+                theEvent=new Event();
             }
             rs=stmt.executeQuery("SELECT name,power FROM participants");
             while(rs.next()) {
@@ -272,7 +308,9 @@ public class pingBot {
             String dbUrl = System.getenv("JDBC_DATABASE_URL");
             dbConnection=DriverManager.getConnection(dbUrl);
             insertP = dbConnection.prepareStatement("INSERT INTO participants(name,power) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
-            insertE = dbConnection.prepareStatement("INSERT INTO event(name) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
+            insertE = dbConnection.prepareStatement("INSERT INTO event(name,active) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
+            closeE = dbConnection.prepareStatement("UPDATE event set active='0' where name=?) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
+            deleteE = dbConnection.prepareStatement("DELETE from event",Statement.RETURN_GENERATED_KEYS);
             deleteP = dbConnection.prepareStatement("delete * from participants");
             deleteOneP =  dbConnection.prepareStatement("delete from participants where name=?",Statement.RETURN_GENERATED_KEYS);
         }

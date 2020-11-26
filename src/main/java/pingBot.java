@@ -4,6 +4,7 @@ import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
 
+
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
@@ -64,6 +65,9 @@ public class pingBot {
                     System.err.println("Error fetching member info");
                     return;
                 }
+                final boolean[] foundR4= {false};
+                m.getRoles().subscribe( r-> {if(r.getName().equals("R4")) foundR4[0]=true; });
+                boolean isR4 = foundR4[0];
                 user = m.getNickname().orElseGet(() -> message.getUserData().username());
                 System.out.println("==>" + message.getContent() + ", " + user);
                 Participant participant = sessions.get(user);
@@ -84,8 +88,12 @@ public class pingBot {
                             channel.createMessage("Nobody registered yet").block(BLOCK);
                             return;
                         }
-                        StringBuilder sb = new StringBuilder("Registered so far for ").append(theEvent).append("\n");
-                        for (Participant p : registered) sb.append(p).append("\n");
+                        StringBuilder sb = new StringBuilder("Registered so far for ").append(theEvent).append("\n```");
+                        int max = registered.stream().map(p->p.name.length()).max(Integer::compareTo).get();
+                        for (Participant p : registered) {
+                            sb.append(p.name).append(" ".repeat(max+5-p.name.length())).append(p.power).append("\n");
+                        }
+                        sb.append("```");
                         participant.setStep(Step.begin);
                         channel.createMessage(sb.toString()).block(BLOCK);
                         return;
@@ -107,6 +115,11 @@ public class pingBot {
                         }
                         return;
                     case "create":
+                        if(!isR4) {
+                            channel.createMessage(user + "create command only allowed for R4 members").block(BLOCK);
+                            participant.setStep(Step.begin);
+                            return;
+                        }
                         participant.setStep(Step.create);
                         channel.createMessage(user + " please enter event date (free text including date and utc time)").block(BLOCK);
                         return;

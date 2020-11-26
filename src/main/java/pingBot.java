@@ -14,14 +14,14 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 //Command state machine steps
-enum Step { begin,registration,power,cancel,create, stopReg, confirmCreate }
+enum Step { begin,registration,power,cancel,create, closeReg, confirmCreate }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     static final String helpStr= "```register   starts registering to event\n" +
                                     "list       displays list of registered members for next event\n"+
                                     "create     create a new event\n"+
-                                    "stopReg    close event registration process\n" +
+                                    "closeReg    close event registration process\n" +
                                     "teams      give a breakdown of teams```";
     static Connection dbConnection;
     static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE;
@@ -110,8 +110,8 @@ public class pingBot {
                         participant.setStep(Step.create);
                         channel.createMessage(user + "Please enter event date (free text including date and utc time)").block(BLOCK);
                         return;
-                    case "stopreg":
-                        participant.setStep(Step.stopReg);
+                    case "closereg":
+                        participant.setStep(Step.closeReg);
                         channel.createMessage(user + "Are you sure you want to stop registration for "+theEvent+"(yes/no)" ).block(BLOCK);
                         return;
                     case "yes":
@@ -149,7 +149,7 @@ public class pingBot {
                                 sessions.clear();
                                 insertEvent(theEvent);
                                 return;
-                            case stopReg:
+                            case closeReg:
                                 if(participant.timedOut()) {
                                     participant.setStep(Step.begin);
                                     channel.createMessage(user + " stop registration timed out!").block(BLOCK);
@@ -309,9 +309,9 @@ public class pingBot {
             dbConnection=DriverManager.getConnection(dbUrl);
             insertP = dbConnection.prepareStatement("INSERT INTO participants(name,power) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
             insertE = dbConnection.prepareStatement("INSERT INTO event(name,active) VALUES(?,?)", Statement.RETURN_GENERATED_KEYS);
-            closeE = dbConnection.prepareStatement("UPDATE event set active='0' where name=?) VALUES(?)", Statement.RETURN_GENERATED_KEYS);
+            closeE = dbConnection.prepareStatement("UPDATE event set active='0' where name=?", Statement.RETURN_GENERATED_KEYS);
             deleteE = dbConnection.prepareStatement("DELETE from event",Statement.RETURN_GENERATED_KEYS);
-            deleteP = dbConnection.prepareStatement("delete * from participants");
+            deleteP = dbConnection.prepareStatement("delete from participants");
             deleteOneP =  dbConnection.prepareStatement("delete from participants where name=?",Statement.RETURN_GENERATED_KEYS);
         }
         return dbConnection;

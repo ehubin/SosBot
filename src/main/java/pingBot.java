@@ -8,6 +8,7 @@ import discord4j.core.object.entity.channel.TextChannel;
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -66,7 +67,7 @@ public class pingBot {
                     return;
                 }
                 final boolean[] foundR4= {false};
-                m.getRoles().subscribe( r-> {if(r.getName().equals("R4")) foundR4[0]=true; System.out.println(r);});
+                m.getRoles().subscribe( r-> {  System.out.println(r);if(r.getName().equals("R4")) foundR4[0]=true;});
                 boolean isR4 = foundR4[0];
                 user = m.getNickname().orElseGet(() -> message.getUserData().username());
                 System.out.println("==>" + message.getContent() + ", " + user);
@@ -82,6 +83,7 @@ public class pingBot {
                     case "list":
                         List<Participant> registered = sessions.values().stream()
                                 .filter(i -> i.registered)
+                                .sorted(Comparator.comparingDouble(Participant::getPower))
                                 .collect(Collectors.toList());
                         if (registered.size() == 0) {
                             participant.setStep(Step.begin);
@@ -340,6 +342,8 @@ public class pingBot {
         boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.begin;}
         Participant(String n,float pow) {name=n;power=pow; }
         public String toString() { return name+"\t"+power;}
+
+        public double getPower() { return power;}
     }
 }
 

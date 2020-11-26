@@ -244,8 +244,8 @@ public class pingBot {
         }
     }
     static class Event {
-        String name;
-        boolean active;
+        String name="";
+        boolean active=true;
         public String toString() { return name+(active?"":"*");}
     }
     static void insertEvent(Event e) {

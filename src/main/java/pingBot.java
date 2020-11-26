@@ -66,7 +66,7 @@ public class pingBot {
                     return;
                 }
                 final boolean[] foundR4= {false};
-                m.getRoles().subscribe( r-> {if(r.getName().equals("R4")) foundR4[0]=true; });
+                m.getRoles().subscribe( r-> {if(r.getName().equals("R4")) foundR4[0]=true; System.out.println(r);});
                 boolean isR4 = foundR4[0];
                 user = m.getNickname().orElseGet(() -> message.getUserData().username());
                 System.out.println("==>" + message.getContent() + ", " + user);
@@ -116,7 +116,7 @@ public class pingBot {
                         return;
                     case "create":
                         if(!isR4) {
-                            channel.createMessage(user + "create command only allowed for R4 members").block(BLOCK);
+                            channel.createMessage("Create command only allowed for R4 members").block(BLOCK);
                             participant.setStep(Step.begin);
                             return;
                         }

@@ -80,14 +80,16 @@ public class pingBot {
                             c.setName("reservoir-raid");
                             c.setTopic("Channel for reservoir raid registration");
 
-                        }).doOnError(Throwable::printStackTrace);
+                        }).doOnError(Throwable::printStackTrace)
+                                .subscribe(System.out::println);
                     }
                     if(!foundSC.get()) {
                         System.out.println("Creating showdown channel");
                         guild.createTextChannel(c->{
                             c.setName("showdown");
                             c.setTopic("Channel for showdown registration");
-                        }).doOnError(Throwable::printStackTrace);
+                        }).doOnError(Throwable::printStackTrace)
+                                .subscribe(System.out::println);
 
                     }
                     channelsCreated.put(guild.getName(),true);

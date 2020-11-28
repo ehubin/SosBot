@@ -1,4 +1,5 @@
 import discord4j.core.*;
+import discord4j.core.event.domain.lifecycle.ConnectEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
@@ -249,7 +250,7 @@ public class pingBot {
                                     if(p.name.length() > maxLength[best]) maxLength[best]=p.name.length();
                                 }
                                 StringBuilder sb=new StringBuilder();
-                                for(int i=0;i<nbTeam;++i) sb.append(padStr("Team 1 ("+power[i]+")",maxLength[i]+5));
+                                for(int i=0;i<nbTeam;++i) sb.append(padStr("Team "+(i+1)+" ("+power[i]+")",maxLength[i]+5));
                                 channel.createMessage('`'+sb.toString()+'`').block(BLOCK);
                                 sb.setLength(0);
                                 sb.append("```");
@@ -291,7 +292,8 @@ public class pingBot {
                 }
             }
         });
-        gateway.onDisconnect().block();
+        gateway.onDisconnect().block()
+        gateway.on(ConnectEvent.class).subscribe(e-> e.getClient().getGuildChannels(e.getClient().getSelfId()).subscribe(c->System.out.println(c.getName())));
     }
     //static ArrayList<Participant> registered = new ArrayList<>();
     static HashMap<String,Participant> sessions = new HashMap<>();

@@ -1,5 +1,6 @@
 import discord4j.core.*;
 import discord4j.core.event.domain.message.MessageCreateEvent;
+import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -31,6 +33,7 @@ public class pingBot {
     //static String eventDetails="",newEventDetails="";
     static final Duration BLOCK=Duration.ofSeconds(3);
     static Event theEvent=new Event(),theNewEvent=new Event();
+    static HashMap<String,Boolean> channelsCreated= new HashMap<>();
 
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
@@ -54,11 +57,39 @@ public class pingBot {
         }
         gateway.on(MessageCreateEvent.class).subscribe(event -> {
             final Message message = event.getMessage();
-            event.getGuild().subscribe(g->g.getChannels().subscribe(c->System.out.println(c.getName()+" | "+c.getType())));
             final TextChannel channel = ((TextChannel)message.getChannel().block());
             if(channel == null) {
                 System.err.println("Error fetching channel info");
                 return;
+            }
+            Guild guild=event.getGuild().block();
+            if(guild==null) {
+                System.err.println("Error fetching channel info");
+                return;
+            } else {
+                if(channelsCreated.get(guild.getName())==null) {
+                    AtomicBoolean foundRR = new AtomicBoolean(false);
+                    AtomicBoolean foundSC = new AtomicBoolean(false);
+                    guild.getChannels().subscribe(c->{
+                        if(c.getName().equals("reservoir-raid")) foundRR.set(true);
+                        else if(c.getName().equals("showdown")) foundSC.set(true);
+                    });
+                    if(!foundRR.get()) {
+                        guild.createTextChannel(c->{
+                            c.setName("reservoir-raid");
+                            c.setTopic("Channel for reservoir raid registration");
+                            System.out.println("Creating reservoir raid channel");
+                        });
+                    }
+                    if(!foundSC.get()) {
+                        guild.createTextChannel(c->{
+                            c.setName("showdown");
+                            c.setTopic("Channel for showdown registration");
+                        });
+                        System.out.println("Creating showdown channel");
+                    }
+                    channelsCreated.put(guild.getName(),true);
+                }
             }
             final String channelName =channel.getName();
             if(channelName!= null && channelName.equals("reservoir-raid")) {

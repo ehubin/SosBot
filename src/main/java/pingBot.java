@@ -1,11 +1,8 @@
 import discord4j.core.*;
-import discord4j.core.event.domain.lifecycle.ConnectEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
-import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
-import discord4j.discordjson.json.GuildData;
 
 
 import java.io.*;
@@ -57,6 +54,7 @@ public class pingBot {
         }
         gateway.on(MessageCreateEvent.class).subscribe(event -> {
             final Message message = event.getMessage();
+            event.getGuild().subscribe(g->g.getChannels().subscribe(c->System.out.println(c.getName()+" | "+c.getType())));
             final TextChannel channel = ((TextChannel)message.getChannel().block());
             if(channel == null) {
                 System.err.println("Error fetching channel info");
@@ -295,11 +293,6 @@ public class pingBot {
             }
         });
         gateway.onDisconnect().block();
-
-        gateway.on(ConnectEvent.class).subscribe(e-> e.getClient().getGuilds().subscribe(g->{
-             System.out.println(g.getName());
-             g.getChannels().subscribe(c-> System.out.println(c.getName()+" | "+c.getType()));
-        }));
     }
     //static ArrayList<Participant> registered = new ArrayList<>();
     static HashMap<String,Participant> sessions = new HashMap<>();

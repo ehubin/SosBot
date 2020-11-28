@@ -75,18 +75,20 @@ public class pingBot {
                         else if(c.getName().equals("showdown")) foundSC.set(true);
                     });
                     if(!foundRR.get()) {
+                        System.out.println("Creating reservoir raid channel");
                         guild.createTextChannel(c->{
                             c.setName("reservoir-raid");
                             c.setTopic("Channel for reservoir raid registration");
-                            System.out.println("Creating reservoir raid channel");
-                        });
+
+                        }).doOnError(Throwable::printStackTrace);
                     }
                     if(!foundSC.get()) {
+                        System.out.println("Creating showdown channel");
                         guild.createTextChannel(c->{
                             c.setName("showdown");
                             c.setTopic("Channel for showdown registration");
-                        });
-                        System.out.println("Creating showdown channel");
+                        }).doOnError(Throwable::printStackTrace);
+
                     }
                     channelsCreated.put(guild.getName(),true);
                 }

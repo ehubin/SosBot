@@ -8,6 +8,7 @@ import discord4j.core.object.entity.channel.TextChannel;
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -16,15 +17,15 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 //Command state machine steps
-enum Step { begin,registration,power,cancel,create, confirmCreate, closeReg }
+enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
-    static final String helpStr= "```register   starts registering to event\n" +
-                                    "list       displays list of registered members for next event\n"+
-                                    "create     create a new event\n"+
+    static final String helpStr= "```register    starts registering to event\n" +
+                                    "list        displays list of registered members for next event\n"+
+                                    "create      create a new event\n"+
                                     "closeReg    close event registration process\n" +
-                                    "teams      give a breakdown of teams```";
+                                    "teams       give a breakdown of participants into teams```";
     static Connection dbConnection;
     static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE;
     //static String eventDetails="",newEventDetails="";
@@ -67,7 +68,7 @@ public class pingBot {
                     return;
                 }
                 final boolean[] foundR4= {false};
-                m.getRoles().subscribe( r-> {  System.out.println(r);if(r.getName().equals("R4")) foundR4[0]=true;});
+                m.getRoles().subscribe( r-> {  if(r.getName().equals("R4")) foundR4[0]=true;});
                 boolean isR4 = foundR4[0];
                 user = m.getNickname().orElseGet(() -> message.getUserData().username());
                 System.out.println("==>" + message.getContent() + ", " + user);
@@ -80,7 +81,7 @@ public class pingBot {
                         channel.createMessage(helpStr).block(BLOCK);
                         participant.setStep(Step.begin);
                         return;
-                    case "list":
+                    case "list": {
                         List<Participant> registered = sessions.values().stream()
                                 .filter(i -> i.registered)
                                 .sorted(Comparator.comparingDouble(Participant::getPower))
@@ -91,14 +92,15 @@ public class pingBot {
                             return;
                         }
                         StringBuilder sb = new StringBuilder("Registered so far for ").append(theEvent).append("\n```");
-                        int max = registered.stream().map(p->p.name.length()).max(Integer::compareTo).get();
+                        int max = registered.stream().map(p -> p.name.length()).max(Integer::compareTo).get();
                         for (Participant p : registered) {
-                            sb.append(p.name).append(" ".repeat(max+5-p.name.length())).append(p.power).append("\n");
+                            sb.append(p.name).append(" ".repeat(max + 5 - p.name.length())).append(p.power).append("\n");
                         }
                         sb.append("```");
                         participant.setStep(Step.begin);
                         channel.createMessage(sb.toString()).block(BLOCK);
                         return;
+                    }
                     case "register":
                         if (participant.registered) {
                                 channel.createMessage(user + " you are already registered!").block(BLOCK);
@@ -128,6 +130,10 @@ public class pingBot {
                     case "closereg":
                         participant.setStep(Step.closeReg);
                         channel.createMessage(user + " are you sure you want to stop registration for "+theEvent+"(yes/no)" ).block(BLOCK);
+                        return;
+                    case "teams":
+                        participant.setStep(Step.teamsNb);
+                        channel.createMessage("How many teams do you want?" ).block(BLOCK);
                         return;
                     case "yes":
                         switch(participant.step) {
@@ -206,6 +212,57 @@ public class pingBot {
                                     channel.createMessage(user + " your registration is confirmed we count on you!").block(BLOCK);
                                 }
                                 return;
+                            case teamsNb: {
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " teams timed out!").block(BLOCK);
+                                    return;
+                                }
+                                int nbTeam;
+                                try {
+                                    nbTeam = Integer.parseInt(content);
+                                } catch (NumberFormatException ne) {
+                                    channel.createMessage("Wrong number of teams " + content).block(BLOCK);
+                                    return;
+                                }
+                                List<Participant> registered = sessions.values().stream()
+                                        .filter(i -> i.registered)
+                                        .sorted(Comparator.comparingDouble(Participant::getPower))
+                                        .collect(Collectors.toList());
+                                ArrayList<ArrayList<Participant>> teams= new ArrayList<>();
+                                int[] power = new int[nbTeam],maxLength = new int[nbTeam];
+                                for(int i=0;i<nbTeam;++i) {
+                                    teams.add(new ArrayList<>());
+                                    maxLength[i]=10;
+                                }
+                                for(Participant p:registered) {
+                                    int best=0,min=power[0];
+                                    for(int i=1;i<nbTeam;++i) if(power[i]< min) { min=power[i]; best=i;}
+                                    teams.get(best).add(p);
+                                    power[best]+=p.power;
+                                    if(p.name.length() > maxLength[best]) maxLength[best]=p.name.length();
+                                }
+                                StringBuilder sb=new StringBuilder();
+                                for(int i=0;i<nbTeam;++i) sb.append(padStr("Team 1 ("+power[i]+")",maxLength[i]+5));
+                                channel.createMessage('`'+sb.toString()+'`').block(BLOCK);
+                                sb.setLength(0);
+                                sb.append("```");
+                                boolean foundOne;
+                                int idx=0;
+                                do {
+                                    foundOne=false;
+                                    for(int i=0;i<nbTeam;++i) {
+                                        if(idx<teams.get(i).size()) {
+                                            foundOne=true;
+                                            sb.append(padStr(teams.get(i).get(idx).name,maxLength[i]+5));
+                                        } else sb.append(" ".repeat(maxLength[i]+5));
+                                    }
+                                    ++idx;
+                                } while(foundOne);
+                                sb.append("```");
+                                channel.createMessage(sb.toString()).block(BLOCK);
+                                return;
+                            }
                             case cancel:
                                 participant.setStep(Step.begin);
                                 channel.createMessage(user + " cancellation aborted you are still registered").block(BLOCK);
@@ -218,6 +275,10 @@ public class pingBot {
                                 theNewEvent.name = rawContent.trim();
                                 participant.setStep(Step.confirmCreate);
                                 channel.createMessage("do you confirm you want to create new RR event \""+theNewEvent+"\" (yes/no)").block(BLOCK);
+                                return;
+                            case confirmCreate:
+                                participant.setStep(Step.begin);
+                                channel.createMessage("creation of event aborted").block(BLOCK);
                         }
                 }
             }
@@ -226,6 +287,9 @@ public class pingBot {
     }
     //static ArrayList<Participant> registered = new ArrayList<>();
     static HashMap<String,Participant> sessions = new HashMap<>();
+    static String padStr(String s,int l) {
+        return s.length() < l ? s+" ".repeat(l-s.length()) : s.substring(0,l);
+    }
 
     @SuppressWarnings("unused")
     static void initFromFile() {

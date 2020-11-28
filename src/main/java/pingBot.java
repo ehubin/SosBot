@@ -222,13 +222,19 @@ public class pingBot {
                                 try {
                                     nbTeam = Integer.parseInt(content);
                                 } catch (NumberFormatException ne) {
+                                    participant.setStep(Step.begin);
                                     channel.createMessage("Wrong number of teams " + content).block(BLOCK);
                                     return;
                                 }
                                 List<Participant> registered = sessions.values().stream()
                                         .filter(i -> i.registered)
-                                        .sorted(Comparator.comparingDouble(Participant::getPower))
+                                        .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
                                         .collect(Collectors.toList());
+                                if(registered.size() ==0) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(" Nobody registered yet!").block(BLOCK);
+                                    return;
+                                }
                                 ArrayList<ArrayList<Participant>> teams= new ArrayList<>();
                                 int[] power = new int[nbTeam],maxLength = new int[nbTeam];
                                 for(int i=0;i<nbTeam;++i) {
@@ -257,10 +263,12 @@ public class pingBot {
                                             sb.append(padStr(teams.get(i).get(idx).name,maxLength[i]+5));
                                         } else sb.append(" ".repeat(maxLength[i]+5));
                                     }
+                                    sb.append("\n");
                                     ++idx;
                                 } while(foundOne);
                                 sb.append("```");
                                 channel.createMessage(sb.toString()).block(BLOCK);
+                                participant.setStep(Step.begin);
                                 return;
                             }
                             case cancel:

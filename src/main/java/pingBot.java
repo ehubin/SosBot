@@ -292,7 +292,7 @@ public class pingBot {
                 }
             }
         });
-        gateway.onDisconnect().block()
+        gateway.onDisconnect().block();
         gateway.on(ConnectEvent.class).subscribe(e-> e.getClient().getGuildChannels(e.getClient().getSelfId()).subscribe(c->System.out.println(c.getName())));
     }
     //static ArrayList<Participant> registered = new ArrayList<>();

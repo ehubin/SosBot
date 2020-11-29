@@ -77,7 +77,10 @@ public class pingBot {
                         System.out.println(c.getName()+" "+c.getType());
                         if(c.getName().equals("reservoir-raid")) foundRR.set(true);
                         else if(c.getName().equals("showdown")) foundSC.set(true);
-                        else if(c.getName().equalsIgnoreCase("text channels")) parentId.set(c.getId());
+                        else if(c.getName().equalsIgnoreCase("text channels")) {
+                            System.out.println("found parent");
+                            parentId.set(c.getId());
+                        }
                     });
                     if(!foundRR.get()) {
                         System.out.println("Creating reservoir raid channel");

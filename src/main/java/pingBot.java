@@ -1,3 +1,4 @@
+import discord4j.common.util.Snowflake;
 import discord4j.core.*;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.Guild;
@@ -14,6 +15,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -70,16 +72,18 @@ public class pingBot {
                 if(channelsCreated.get(guild.getName())==null) {
                     AtomicBoolean foundRR = new AtomicBoolean(false);
                     AtomicBoolean foundSC = new AtomicBoolean(false);
+                    AtomicReference<Snowflake> parentId=new AtomicReference<>();
                     guild.getChannels().subscribe(c->{
                         if(c.getName().equals("reservoir-raid")) foundRR.set(true);
                         else if(c.getName().equals("showdown")) foundSC.set(true);
+                        else if(c.getName().equalsIgnoreCase("text channels")) parentId.set(c.getId());
                     });
                     if(!foundRR.get()) {
                         System.out.println("Creating reservoir raid channel");
                         guild.createTextChannel(c->{
                             c.setName("reservoir-raid");
                             c.setTopic("Channel for reservoir raid registration");
-
+                            if(parentId.get() != null) c.setParentId(parentId.get());
                         }).doOnError(Throwable::printStackTrace)
                                 .subscribe(System.out::println);
                     }

@@ -183,7 +183,7 @@ public class pingBot {
                                 return;
                             }
                             participant.setStep(Step.create);
-                            channel.createMessage(user + " please enter event date (free text including date and utc time)").block(BLOCK);
+                            channel.createMessage(user + " please enter event date (e.g Sunday the 12th at 20:00 utc)").block(BLOCK);
                             return;
                         case "closereg":
                             participant.setStep(Step.closeReg);
@@ -202,7 +202,7 @@ public class pingBot {
                                         return;
                                     }
                                     participant.setStep(Step.power);
-                                    channel.createMessage("Please enter your current overall Battle Power(just  number in millions) to help creating balanced teams").block(BLOCK);
+                                    channel.createMessage("Please enter your current overall Battle Power(e.g 30 or 30.2) to help creating balanced teams").block(BLOCK);
                                     return;
                                 case cancel:
                                     if (participant.timedOut()) {

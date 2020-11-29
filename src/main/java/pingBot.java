@@ -74,6 +74,7 @@ public class pingBot {
                     AtomicBoolean foundSC = new AtomicBoolean(false);
                     AtomicReference<Snowflake> parentId=new AtomicReference<>();
                     guild.getChannels().subscribe(c->{
+                        System.out.println(c.getName()+" "+c.getType());
                         if(c.getName().equals("reservoir-raid")) foundRR.set(true);
                         else if(c.getName().equals("showdown")) foundSC.set(true);
                         else if(c.getName().equalsIgnoreCase("text channels")) parentId.set(c.getId());

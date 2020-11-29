@@ -74,7 +74,7 @@ public class pingBot {
                     AtomicBoolean foundSC = new AtomicBoolean(false);
                     AtomicReference<Snowflake> parentId=new AtomicReference<>();
                     guild.getChannels().subscribe(c->{
-                        System.out.println(c.getName()+" "+c.getType());
+                        //System.out.println(c.getName()+" "+c.getType()+" "+c.getPosition());
                         if(c.getName().equals("reservoir-raid")) foundRR.set(true);
                         else if(c.getName().equals("showdown")) foundSC.set(true);
                         else if(c.getName().equalsIgnoreCase("text channels")) {
@@ -90,12 +90,14 @@ public class pingBot {
                             if(parentId.get() != null) c.setParentId(parentId.get());
                         }).doOnError(Throwable::printStackTrace)
                                 .subscribe(System.out::println);
+
                     }
                     if(!foundSC.get()) {
                         System.out.println("Creating showdown channel");
                         guild.createTextChannel(c->{
                             c.setName("showdown");
                             c.setTopic("Channel for showdown registration");
+                            if(parentId.get() != null) c.setParentId(parentId.get());
                         }).doOnError(Throwable::printStackTrace)
                                 .subscribe(System.out::println);
 

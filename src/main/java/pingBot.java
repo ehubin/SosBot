@@ -25,11 +25,12 @@ enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, clos
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
-    static final String RRhelpStr= "```register    starts registering to event\n" +
-                                      "list        displays list of registered members for next event\n"+
-                                      "create      create a new event\n"+
-                                      "closeReg    close event registration process\n" +
-                                      "teams       give a breakdown of participants into teams```";
+    static final String RRhelpStr= "```register             starts registering to event\n" +
+                                      "list                 displays list of registered members for next event\n"+
+                                      "create               create a new event\n"+
+                                      "closeReg             close event registration process\n" +
+                                      "r4reg <name> <power> allows to register another player (only for R4s)\n"+
+                                      "teams                give a breakdown of participants into teams```";
     static final String SDhelpStr= "```register    starts registering to event\n" +
                                       "lanes       displays list of registered members for next event\n"+
                                       "create      create a new event```";
@@ -247,6 +248,10 @@ public class pingBot {
                             }
                         default:
                             if(content.startsWith("r4reg")) {
+                                if(!isR4) {
+                                    channel.createMessage("only R4 can use r4reg command").block(BLOCK);
+                                    return;
+                                }
                                 Matcher ma=registerPattern.matcher(rawContent.substring(6));
                                 if(ma.find()) {
                                     float pow=Float.parseFloat(ma.group(2));

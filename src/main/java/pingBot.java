@@ -250,10 +250,12 @@ public class pingBot {
                                 Matcher ma=registerPattern.matcher(rawContent.substring(6));
                                 if(ma.find()) {
                                     float pow=Float.parseFloat(ma.group(2));
-                                    System.out.println("registering"  + ma.group(1) + "|" + ma.group(2));
+                                    System.out.println("registering "  + ma.group(1) + "| " + ma.group(2));
                                     Participant p = new Participant(ma.group(1), pow);
+                                    p.registered=true;
                                     sessions.put(ma.group(1),p);
                                     insertParticipant(p,guild);
+                                    channel.createMessage("Succesfully registered "+p).block(BLOCK);
                                 } else {
                                     channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
                                 }

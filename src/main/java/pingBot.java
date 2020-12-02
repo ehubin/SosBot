@@ -30,9 +30,9 @@ public class pingBot {
                                       "create      create a new event\n"+
                                       "closeReg    close event registration process\n" +
                                       "teams       give a breakdown of participants into teams```";
-    static final String SChelpStr= "```register    starts registering to event\n" +
+    static final String SDhelpStr= "```register    starts registering to event\n" +
                                       "lanes       displays list of registered members for next event\n"+
-                                      "create      create a new event\n";
+                                      "create      create a new event```";
     static Connection dbConnection;
     static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants;
     //static String eventDetails="",newEventDetails="";
@@ -128,7 +128,7 @@ public class pingBot {
                 m.getRoles().subscribe( r-> {  if(r.getName().equals("R4")) foundR4[0]=true;});
                 boolean isR4 = foundR4[0];
                 user = m.getNickname().orElseGet(() -> message.getUserData().username());
-                System.out.println("==>" + message.getContent() + ", " + user);
+                if(!user.equals("SosBot"))   System.out.println("==>" + message.getContent() + ", " + user);
                 HashMap<String,Participant> sessions=curServer.sessions;
                 Participant participant = sessions.get(user);
                 if(participant==null) { participant=new Participant(user,-1); sessions.put(user,participant);}
@@ -162,9 +162,12 @@ public class pingBot {
                         case "register":
                             if (participant.registered) {
                                 channel.createMessage(user + " you are already registered!").block(BLOCK);
-                            } else {
-                                participant.setStep(Step.registration);
-                                channel.createMessage(user + " can you commit to be online " + curServer.RRevent + "(yes/no)").block(BLOCK);
+                            } else if(!curServer.RRevent.active) {
+                                channel.createMessage(user + "RR event now closed to registrations!").block(BLOCK);
+                            }
+                            else {
+                                    participant.setStep(Step.registration);
+                                    channel.createMessage(user + " can you commit to be online " + curServer.RRevent + "(yes/no)").block(BLOCK);
                             }
                             return;
                         case "cancel":
@@ -226,7 +229,7 @@ public class pingBot {
                                     curServer.RRevent = curServer.newRRevent;
                                     curServer.newRRevent = new RREvent(guild);
                                     sessions.clear();
-                                    insertEvent(curServer.RRevent);
+                                    inserRRevent(curServer.RRevent);
                                     channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").block(BLOCK);
                                     return;
                                 case closeReg:
@@ -238,11 +241,24 @@ public class pingBot {
                                     participant.setStep(Step.begin);
                                     // update DB
                                     curServer.RRevent.active = false;
-                                    closeEvent(curServer.RRevent);
+                                    closeRREvent(curServer.RRevent);
                                     channel.createMessage("Event \"" + curServer.RRevent + "\" now closed for registration! you can still get teams or list of participants").block(BLOCK);
                                     return;
                             }
                         default:
+                            if(content.startsWith("r4reg")) {
+                                Matcher ma=registerPattern.matcher(rawContent.substring(6));
+                                if(ma.find()) {
+                                    float pow=Float.parseFloat(ma.group(2));
+                                    System.out.println("registering"  + ma.group(1) + "|" + ma.group(2));
+                                    Participant p = new Participant(ma.group(1), pow);
+                                    sessions.put(ma.group(1),p);
+                                    insertParticipant(p,guild);
+                                } else {
+                                    channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
+                                }
+                                return;
+                            }
                             switch (participant.step) {
                                 case power:
                                     if (participant.timedOut()) {
@@ -286,6 +302,10 @@ public class pingBot {
                                     } catch (NumberFormatException ne) {
                                         participant.setStep(Step.begin);
                                         channel.createMessage("Wrong number of teams " + content).block(BLOCK);
+                                        return;
+                                    }
+                                    if(nbTeam<=0 || nbTeam>5) {
+                                        channel.createMessage("Number of teams should be between 1 and 5").block(BLOCK);
                                         return;
                                     }
                                     List<Participant> registered = sessions.values().stream()
@@ -360,11 +380,43 @@ public class pingBot {
                     if(channelName.equalsIgnoreCase("showdown")) {
                     switch (content) {
                         case "help":
-                            channel.createMessage(SChelpStr).block(BLOCK);
+                            channel.createMessage(SDhelpStr).block(BLOCK);
                             participant.setStep(Step.begin);
                             return;
+                        case "register": {
+                            channel.createMessage("Please enter your power in million with one decimal precision (e.g 25.3)").block(BLOCK);
+                            participant.setStep(Step.power);
+                            return;
+                        }
                         case "lanes": {
 
+                        }
+                        default: {
+                            if(participant.step==Step.power) {
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + "registration timed out!").block(BLOCK);
+                                    return;
+                                }
+                                float pow;
+                                try {
+                                    pow = Float.parseFloat(content);
+                                } catch (NumberFormatException nfe) {
+                                    channel.createMessage("incorrect number format " + content).block(BLOCK);
+                                    return;
+                                }
+                                if (pow < 0.1 || pow > 300.) {
+                                    channel.createMessage("incorrect power value " + content).block(BLOCK);
+                                } else {
+                                    participant.power = pow;
+                                    participant.setStep(Step.begin);
+                                    //TODO compute lane
+
+                                    //todo save in DB the updated participant data
+                                }
+                            } else {
+                                participant.setStep(Step.begin);
+                            }
                         }
                     }
                 }
@@ -417,7 +469,7 @@ public class pingBot {
         public RREvent(Guild g) { this.guild=g;}
         public String toString() { return name+(active?"":"*");}
     }
-    static void insertEvent(RREvent e) {
+    static void inserRRevent(RREvent e) {
         try {
             deleteE.setLong(1, e.guild.getId().asLong());
             deleteE.executeUpdate();
@@ -431,7 +483,7 @@ public class pingBot {
             ex.printStackTrace();
         }
     }
-    static void closeEvent(RREvent e) {
+    static void closeRREvent(RREvent e) {
         try {
             closeE.setString(1, e.name);
             closeE.setLong(2, e.guild.getId().asLong());
@@ -452,6 +504,8 @@ public class pingBot {
 
             } else {
                 server.RRevent=new RREvent(server.guild);
+                // first time event with empty DB is inactive
+                server.RRevent.active=false;
             }
             selectRRparticipants.setLong(1,server.guild.getId().asLong());
             rs=selectRRparticipants.executeQuery();

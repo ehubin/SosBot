@@ -190,6 +190,11 @@ public class pingBot {
                             channel.createMessage(user + " please enter event date (e.g Sunday the 12th at 20:00 utc)").block(BLOCK);
                             return;
                         case "closereg":
+                            if(!isR4) {
+                                participant.setStep(Step.begin);
+                                channel.createMessage(user + "Stop registration only for R4").block(BLOCK);
+                                return;
+                            }
                             participant.setStep(Step.closeReg);
                             channel.createMessage(user + " are you sure you want to stop registration for " + curServer.RRevent + "(yes/no)").block(BLOCK);
                             return;
@@ -239,6 +244,7 @@ public class pingBot {
                                         channel.createMessage(user + " stop registration timed out!").block(BLOCK);
                                         return;
                                     }
+
                                     participant.setStep(Step.begin);
                                     // update DB
                                     curServer.RRevent.active = false;
@@ -342,24 +348,15 @@ public class pingBot {
                                         if (p.name.length() > maxLength[best]) maxLength[best] = p.name.length();
                                     }
                                     StringBuilder sb = new StringBuilder();
-                                    for (int i = 0; i < nbTeam; ++i)
-                                        sb.append(padStr("Team " + (i + 1) + " (" + power[i] + ")", maxLength[i] + 5));
-                                    channel.createMessage('`' + sb.toString() + '`').block(BLOCK);
-                                    sb.setLength(0);
                                     sb.append("```");
-                                    boolean foundOne;
-                                    int idx = 0;
-                                    do {
-                                        foundOne = false;
-                                        for (int i = 0; i < nbTeam; ++i) {
-                                            if (idx < teams.get(i).size()) {
-                                                foundOne = true;
-                                                sb.append(padStr(teams.get(i).get(idx).name, maxLength[i] + 5));
-                                            } else sb.append(" ".repeat(maxLength[i] + 5));
+                                    for (int i = 0; i < nbTeam; ++i) {
+                                        sb.append("Team ").append(i + 1).append(" (").append(power[i]).append(")\n");
+                                        int j=0;
+                                        for (Participant p : teams.get(i)) {
+                                            sb.append(++j).append(". ").append(p.name).append("\n");
                                         }
                                         sb.append("\n");
-                                        ++idx;
-                                    } while (foundOne);
+                                    }
                                     sb.append("```");
                                     channel.createMessage(sb.toString()).block(BLOCK);
                                     participant.setStep(Step.begin);
@@ -433,7 +430,8 @@ public class pingBot {
     }
     //static ArrayList<Participant> registered = new ArrayList<>();
 
-    static String padStr(String s,int l) {
+    @SuppressWarnings("unused")
+    static String padStr(String s, int l) {
         return s.length() < l ? s+" ".repeat(l-s.length()) : s.substring(0,l);
     }
 

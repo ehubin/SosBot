@@ -608,6 +608,7 @@ public class pingBot {
                 if(!server.sessions.containsKey(player)) {
                     p=new Participant(player, power);
                     p.registered=true;
+                    p.teamNumber=rs.getInt("team");
                     server.sessions.put(player, p);
                 }
             }

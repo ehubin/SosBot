@@ -64,7 +64,9 @@ public class pingBot {
                 final TextChannel channel = ((TextChannel) message.getChannel().block());
                 if (channel == null) {
                     System.err.println("Error fetching channel info");
+                    return;
                 }
+                channel.createMessage("Unexpected error...").block();
             }
             catch(Error e) {
                 System.err.println("Double error!!");

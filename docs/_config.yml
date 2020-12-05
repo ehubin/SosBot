@@ -1,4 +1,4 @@
-theme: jekyll-theme-minimal
+theme: jekyll-theme-slate
 title: SosBot
 description: A Discord bot to help you manage state of survival events
 logo: /dog.png

@@ -5,6 +5,7 @@ import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
+import discord4j.rest.util.Color;
 
 
 import java.io.*;
@@ -76,8 +77,7 @@ public class pingBot {
             }
         }).subscribe();
         gateway.onDisconnect().block();
-    }
-    //static ArrayList<Participant> registered = new ArrayList<>();
+    } //end of main
 
     static MessageCreateEvent processMessage( MessageCreateEvent event) {
         final Message message = event.getMessage();
@@ -107,7 +107,7 @@ public class pingBot {
                     if(c.getName().equals("reservoir-raid")) foundRR.set(true);
                     else if(c.getName().equals("showdown")) foundSC.set(true);
                     else if(c.getName().equalsIgnoreCase("text channels")) {
-                        System.out.println("found parent");
+                        //System.out.println("found parent");
                         parentId.set(c.getId());
                     }
                 });
@@ -130,6 +130,19 @@ public class pingBot {
                     }).doOnError(Throwable::printStackTrace);
                     //.subscribe(System.out::println);
 
+                }
+                //create R4 role if it does not already exists
+                AtomicBoolean foundR4 = new AtomicBoolean(false);
+                guild.getRoles().subscribe(r->{
+                    if(r.getName().equals("R4")) foundR4.set(true);
+                });
+                if(!foundR4.get()) {
+                    System.out.println("Creating R$ role...");
+                    guild.createRole( rcs -> {
+                       rcs.setName("R4");
+                       rcs.setColor(Color.BLUE);
+                       rcs.setReason("This is a role for R4 members");
+                    });
                 }
                 channelsCreated.put(guild.getName(),true);
             }

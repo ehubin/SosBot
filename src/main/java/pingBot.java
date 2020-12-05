@@ -10,10 +10,7 @@ import discord4j.core.object.entity.channel.TextChannel;
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -200,8 +197,18 @@ public class pingBot {
                             channel.createMessage(user + " are you sure you want to stop registration for " + curServer.RRevent + "(yes/no)").block(BLOCK);
                             return;
                         case "teams":
-                            participant.setStep(Step.teamsNb);
-                            channel.createMessage("How many teams do you want?").block(BLOCK);
+                            if(curServer.RRevent.teamSaved) {
+                                participant.setStep(Step.begin);
+                                ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                                channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
+                                if(isR4) {
+                                    channel.createMessage("You can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3").block(BLOCK);
+                                    return;
+                                }
+                            } else {
+                                participant.setStep(Step.teamsNb);
+                                channel.createMessage("How many teams do you want?").block(BLOCK);
+                            }
                             return;
                         case "yes":
                             switch (participant.step) {
@@ -254,6 +261,7 @@ public class pingBot {
                                         }
                                         curServer.RRevent.saveTeams();
                                     }
+                                    return;
                                 }
                                 case closeReg:
                                     if (participant.timedOut()) {
@@ -349,18 +357,7 @@ public class pingBot {
                                     int[] power = new int[nbTeam];
                                     ArrayList<ArrayList<Participant>> teams = getRRTeams(nbTeam,registered,power);
                                     assert(teams!= null);
-                                    StringBuilder sb = new StringBuilder();
-                                    sb.append("```");
-                                    for (int i = 0; i < nbTeam; ++i) {
-                                        sb.append("Team ").append(i + 1).append(" (").append(power[i]).append(")\n");
-                                        int j=0;
-                                        for (Participant p : teams.get(i)) {
-                                            sb.append(++j).append(". ").append(p.name).append("\n");
-                                        }
-                                        sb.append("\n");
-                                    }
-                                    sb.append("```");
-                                    channel.createMessage(sb.toString()).block(BLOCK);
+                                    channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
                                     if(isR4) {
                                         participant.setStep(Step.teamSave);
                                         curServer.RRevent.nbTeams=nbTeam;
@@ -441,10 +438,10 @@ public class pingBot {
 
 
     static List<Participant> getRegisteredRRparticipants(HashMap<String,Participant> sessions) {
-        return sessions.values().stream()
-                .filter(i -> i.registered)
+        return sessions.values().stream().filter(i -> i.registered)
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
                 .collect(Collectors.toList());
+
     }
     static ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered,int[] power) {
         if(registered.size()==0) return null;
@@ -464,6 +461,36 @@ public class pingBot {
             power[best] += p.power;
         }
         return teams;
+    }
+    static ArrayList<ArrayList<Participant>> getRRSavedTeams(Collection<Participant> all) {
+        List<Participant>list=all.stream().filter(i -> i.registered)
+                .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
+                .collect(Collectors.toList());
+        ArrayList<ArrayList<Participant>> res = new ArrayList<>();
+        for(Participant p:list) {
+            if(res.size()<p.teamNumber) res.add(new ArrayList<>());
+            res.get(p.teamNumber-1).add(p);
+        }
+        return res;
+    }
+    static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("```");
+        int nbTeam= teams.size();
+        int[] power =new int[nbTeam];
+        for (int i = 0; i < nbTeam; ++i) {
+            for (Participant p : teams.get(i)) {power[i]+= p.power;}
+        }
+        for (int i = 0; i < nbTeam; ++i) {
+            sb.append("Team ").append(i + 1).append(" (").append(power[i]).append(")\n");
+            int j=0;
+            for (Participant p : teams.get(i)) {
+                sb.append(++j).append(". ").append(p.name).append("\n");
+            }
+            sb.append("\n");
+        }
+        sb.append("```");
+        return sb;
     }
 
     @SuppressWarnings("unused")

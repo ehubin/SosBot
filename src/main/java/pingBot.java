@@ -147,7 +147,9 @@ public class pingBot {
             m.getRoles().subscribe( r-> {  if(r.getName().equals("R4")) foundR4[0]=true;});
             boolean isR4 = foundR4[0];
             user = m.getNickname().orElseGet(() -> message.getUserData().username());
-            if(!user.equals("SosBot"))   System.out.println("==>" + message.getContent() + ", " + user);
+            // don't process bot messages and log user messages
+            if(user.equals("SosBot")) return event;
+            else System.out.println("==>" + message.getContent() + ", " + user);
             HashMap<String,Participant> sessions=curServer.sessions;
             Participant participant = sessions.get(user);
             if(participant==null) { participant=new Participant(user,-1); sessions.put(user,participant);}
@@ -298,7 +300,7 @@ public class pingBot {
                                 return event;
                         }
                     default:
-                        if(content.startsWith("r4reg")) {
+                        if(content.startsWith("r4reg ")) {
                             if(!isR4) {
                                 channel.createMessage("only R4 can use r4reg command").block(BLOCK);
                                 return event;
@@ -316,7 +318,7 @@ public class pingBot {
                                 channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
                             }
                             return event;
-                        } else if(content.startsWith("swap")) {
+                        } else if(content.startsWith("swap ")) {
                             if(!isR4) {
                                 channel.createMessage("only R4 can use swap command").block(BLOCK);
                                 return event;

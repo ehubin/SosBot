@@ -2,7 +2,7 @@
 
 This is the home page of SosBot. This program is a discord bot to hep you manage your state of survival alliance.
 
-Add it to your alliance discord now by [Clicking here] https://discord.com/api/oauth2/authorize?client_id=778290592475512862&permissions=268437520&scope=bot
+Add it to your alliance discord now by [Clicking here](https://discord.com/api/oauth2/authorize?client_id=778290592475512862&permissions=268437520&scope=bot)
 
 # How does it work?
 

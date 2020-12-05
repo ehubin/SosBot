@@ -56,7 +56,7 @@ public class pingBot {
             se.printStackTrace();
             System.exit(-2);
         }
-        //noinspection ResultOfMethodCallIgnored
+
         gateway.on(MessageCreateEvent.class).map(pingBot::processMessage).onErrorContinue((error, event)->{
             try {
                 error.printStackTrace();
@@ -70,7 +70,7 @@ public class pingBot {
                 System.err.println("Double error!!");
                 e.printStackTrace();
             }
-        });
+        }).subscribe();
         gateway.onDisconnect().block();
     }
     //static ArrayList<Participant> registered = new ArrayList<>();

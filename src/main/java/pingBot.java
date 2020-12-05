@@ -331,8 +331,25 @@ public class pingBot {
                                 int toTeam=Integer.parseInt(ma.group(3));
                                 int toPlayer=Integer.parseInt(ma.group(4));
                                 ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
-                                Participant from = teams.get(fromTeam).get(fromPlayer);
-                                Participant to = teams.get(toTeam).get(toPlayer);
+                                int teamNb = teams.size();
+                                if(fromTeam<=0 || fromTeam>teamNb) {
+                                    channel.createMessage("Invalid team number "+fromTeam).block(BLOCK);
+                                    return event;
+                                }
+                                if(toTeam<=0 || toTeam>teamNb) {
+                                    channel.createMessage("Invalid team number "+toTeam).block(BLOCK);
+                                    return event;
+                                }
+                                if(fromPlayer<=0 || fromPlayer > teams.get(fromTeam).size()) {
+                                    channel.createMessage("Invalid player number "+fromPlayer).block(BLOCK);
+                                    return event;
+                                }
+                                if(toPlayer<=0 || toPlayer > teams.get(toTeam).size()) {
+                                    channel.createMessage("Invalid player number "+toPlayer).block(BLOCK);
+                                    return event;
+                                }
+                                Participant from = teams.get(fromTeam-1).get(fromPlayer-1);
+                                Participant to = teams.get(toTeam-1).get(toPlayer-1);
 
                                 channel.createMessage("Swapping "+from.name+" and "+to.name);
                                 from.swap(to,guild);

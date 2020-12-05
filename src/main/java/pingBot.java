@@ -431,7 +431,7 @@ public class pingBot {
                     }
                 }
             }
-        });
+        }, Throwable::printStackTrace);
         gateway.onDisconnect().block();
     }
     //static ArrayList<Participant> registered = new ArrayList<>();

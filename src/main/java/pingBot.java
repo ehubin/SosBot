@@ -22,6 +22,7 @@ enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, clos
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
+    static final Pattern swapPattern=Pattern.compile("\\s*(\\d).(\\d+)\\s*(\\d).(\\d+)");
     static final String RRhelpStr= "```register             starts registering to event\n" +
                                       "list                 displays list of registered members for next event\n"+
                                       "create               create a new event\n"+
@@ -314,6 +315,33 @@ public class pingBot {
                                 channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
                             }
                             return event;
+                        } else if(content.startsWith("swap")) {
+                            if(!isR4) {
+                                channel.createMessage("only R4 can use swap command").block(BLOCK);
+                                return event;
+                            }
+                            if(!curServer.RRevent.teamSaved) {
+                                channel.createMessage("You have to save teams before swapping players").block(BLOCK);
+                                return event;
+                            }
+                            Matcher ma=swapPattern.matcher(content.substring(4));
+                            if(ma.find()) {
+                                int fromTeam=Integer.parseInt(ma.group(1));
+                                int fromPlayer=Integer.parseInt(ma.group(2));
+                                int toTeam=Integer.parseInt(ma.group(3));
+                                int toPlayer=Integer.parseInt(ma.group(4));
+                                ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                                Participant from = teams.get(fromTeam).get(fromPlayer);
+                                Participant to = teams.get(toTeam).get(toPlayer);
+
+                                channel.createMessage("Swapping "+from.name+" and "+to.name);
+                                from.swap(to,guild);
+                                teams = getRRSavedTeams(sessions.values());
+                                channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
+                            } else {
+                                channel.createMessage("syntax is swap x.y z.t").block(BLOCK);
+                            }
+                            return event;
                         }
                         switch (participant.step) {
                             case power:
@@ -493,7 +521,7 @@ public class pingBot {
             sb.append("Team ").append(i + 1).append(" (").append(power[i]).append(")\n");
             int j=0;
             for (Participant p : teams.get(i)) {
-                sb.append(++j).append(". ").append(p.name).append("\n");
+                sb.append(++j).append(". ").append(p.name).append(" (").append(p.power).append(")\n");
             }
             sb.append("\n");
         }
@@ -675,6 +703,11 @@ public class pingBot {
                 return false;
             }
             return true;
+        }
+        public void swap(Participant o,Guild g) {
+            int curTeam=teamNumber;
+            updateTeam(o.teamNumber,g.getId().asLong());
+            o.updateTeam(curTeam,g.getId().asLong());
         }
 
         public double getPower() { return power;}

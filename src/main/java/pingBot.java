@@ -28,7 +28,8 @@ public class pingBot {
                                       "create               create a new event\n"+
                                       "closeReg             close event registration process\n" +
                                       "r4reg <name> <power> allows to register another player (only for R4s)\n"+
-                                      "teams                give a breakdown of participants into teams```";
+                                      "teams                give a breakdown of participants into teams\n"+
+                                      "swap x.y z.t         swaps player y in team x with player t in team z```";
     static final String SDhelpStr= "```register    starts registering to event\n" +
                                       "lanes       displays list of registered members for next event\n"+
                                       "create      create a new event```";
@@ -351,7 +352,7 @@ public class pingBot {
                                 Participant from = teams.get(fromTeam-1).get(fromPlayer-1);
                                 Participant to = teams.get(toTeam-1).get(toPlayer-1);
 
-                                channel.createMessage("Swapping "+from.name+" and "+to.name);
+                                channel.createMessage("Swapping "+from.name+" and "+to.name).block(BLOCK);
                                 from.swap(to,guild);
                                 teams = getRRSavedTeams(sessions.values());
                                 channel.createMessage(displayTeams(teams).toString()).block(BLOCK);

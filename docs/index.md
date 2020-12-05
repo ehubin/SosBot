@@ -1,37 +1,30 @@
-## Welcome to GitHub Pages
+# Welcome to SOS bot
 
-You can use the [editor on GitHub](https://github.com/ehubin/SosBot/edit/master/docs/index.md) to maintain and preview the content for your website in Markdown files.
+This is the home page of SosBot. This program is a discord bot to hep you manage your state of survival alliance.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+Add it to your alliance discord now by [Clicking here] https://discord.com/api/oauth2/authorize?client_id=778290592475512862&permissions=268437520&scope=bot
 
-### Markdown
+# How does it work?
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+The bot will create a reservoir-raid  and showdown channel in your discord.
+Then you can go in these channels and type commands to register or manage these events.
+Some of the advanced commands require you to have the R4 role.
 
-```markdown
-Syntax highlighted code block
+## Reservoir raid commands
 
-# Header 1
-## Header 2
-### Header 3
+### register
+type that as a user when you want to register yourself to the next event.
+### list
+Provides the list of currently registered participants to next RR event
+### teams
+When team composition is finalised allows to display the teams
+If team composition not finalised this command allows R4 to decide how many teams they want then save the team composition
+### create
+Allows to create the next RR event (you will need to provide a date). This is restricted to R4 only. It will wipe out the previous event's participant list
+### closereg
+Command used by R4s to close registration process. After that nobody can register anymore.
+### swap x.y z.t
+Allows an R4 to swap participants between 2 teams. Only work when team composition has been saved
+### r4reg playername playerpower
+Allows an R4 to register another player
 
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/ehubin/SosBot/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.

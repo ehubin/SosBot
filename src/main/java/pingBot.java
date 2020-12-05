@@ -341,11 +341,11 @@ public class pingBot {
                                     channel.createMessage("Invalid team number "+toTeam).block(BLOCK);
                                     return event;
                                 }
-                                if(fromPlayer<=0 || fromPlayer > teams.get(fromTeam).size()) {
+                                if(fromPlayer<=0 || fromPlayer > teams.get(fromTeam-1).size()) {
                                     channel.createMessage("Invalid player number "+fromPlayer).block(BLOCK);
                                     return event;
                                 }
-                                if(toPlayer<=0 || toPlayer > teams.get(toTeam).size()) {
+                                if(toPlayer<=0 || toPlayer > teams.get(toTeam-1).size()) {
                                     channel.createMessage("Invalid player number "+toPlayer).block(BLOCK);
                                     return event;
                                 }

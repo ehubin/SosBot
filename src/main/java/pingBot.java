@@ -246,7 +246,7 @@ public class pingBot {
                                         channel.createMessage(" Nobody registered yet!").block(BLOCK);
                                         return;
                                     }
-                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered);
+                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered,null);
                                     for(int i=0;i<curServer.RRevent.nbTeams;++i) {
                                         assert teams != null;
                                         for(Participant p:teams.get(i)) {
@@ -346,24 +346,9 @@ public class pingBot {
                                         channel.createMessage(" Nobody registered yet!").block(BLOCK);
                                         return;
                                     }
-                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(nbTeam,registered);
+                                    int[] power = new int[nbTeam];
+                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(nbTeam,registered,power);
                                     assert(teams!= null);
-                                    int[] power = new int[nbTeam], maxLength = new int[nbTeam];
-                                    for (int i = 0; i < nbTeam; ++i) {
-                                        teams.add(new ArrayList<>());
-                                        maxLength[i] = 10;
-                                    }
-                                    for (Participant p : registered) {
-                                        int best = 0, min = power[0];
-                                        for (int i = 1; i < nbTeam; ++i)
-                                            if (power[i] < min) {
-                                                min = power[i];
-                                                best = i;
-                                            }
-                                        teams.get(best).add(p);
-                                        power[best] += p.power;
-                                        if (p.name.length() > maxLength[best]) maxLength[best] = p.name.length();
-                                    }
                                     StringBuilder sb = new StringBuilder();
                                     sb.append("```");
                                     for (int i = 0; i < nbTeam; ++i) {
@@ -461,10 +446,10 @@ public class pingBot {
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
                 .collect(Collectors.toList());
     }
-    static ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered) {
+    static ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered,int[] power) {
         if(registered.size()==0) return null;
         ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
-        int[] power = new int[nbTeam];
+        if(power==null) power = new int[nbTeam];
         for (int i = 0; i < nbTeam; ++i) {
             teams.add(new ArrayList<>());
         }

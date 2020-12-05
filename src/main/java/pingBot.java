@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 //Command state machine steps
-enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg }
+enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg,teamSave }
 public class pingBot {
     static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
@@ -35,7 +35,8 @@ public class pingBot {
                                       "lanes       displays list of registered members for next event\n"+
                                       "create      create a new event```";
     static Connection dbConnection;
-    static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants;
+    static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants,
+            saveTeam,updateTeam,RRsaveTeam;
     //static String eventDetails="",newEventDetails="";
     static final Duration BLOCK=Duration.ofSeconds(3);
     static HashMap<String,Server> servers= new HashMap<>();
@@ -238,6 +239,22 @@ public class pingBot {
                                     inserRRevent(curServer.RRevent);
                                     channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").block(BLOCK);
                                     return;
+                                case teamSave: {
+                                    List<Participant> registered = getRegisteredRRparticipants(sessions);
+                                    if(registered.size()==0) {
+                                        participant.setStep(Step.begin);
+                                        channel.createMessage(" Nobody registered yet!").block(BLOCK);
+                                        return;
+                                    }
+                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered);
+                                    for(int i=0;i<curServer.RRevent.nbTeams;++i) {
+                                        assert teams != null;
+                                        for(Participant p:teams.get(i)) {
+                                            p.updateTeam(i+1,curServer.guild.getId().asLong());
+                                        }
+                                        curServer.RRevent.saveTeams();
+                                    }
+                                }
                                 case closeReg:
                                     if (participant.timedOut()) {
                                         participant.setStep(Step.begin);
@@ -321,16 +338,16 @@ public class pingBot {
                                         channel.createMessage("Number of teams should be between 1 and 5").block(BLOCK);
                                         return;
                                     }
-                                    List<Participant> registered = sessions.values().stream()
-                                            .filter(i -> i.registered)
-                                            .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
-                                            .collect(Collectors.toList());
-                                    if (registered.size() == 0) {
+
+
+                                    List<Participant> registered = getRegisteredRRparticipants(sessions);
+                                    if(registered.size()==0) {
                                         participant.setStep(Step.begin);
                                         channel.createMessage(" Nobody registered yet!").block(BLOCK);
                                         return;
                                     }
-                                    ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
+                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(nbTeam,registered);
+                                    assert(teams!= null);
                                     int[] power = new int[nbTeam], maxLength = new int[nbTeam];
                                     for (int i = 0; i < nbTeam; ++i) {
                                         teams.add(new ArrayList<>());
@@ -359,9 +376,16 @@ public class pingBot {
                                     }
                                     sb.append("```");
                                     channel.createMessage(sb.toString()).block(BLOCK);
+                                    if(isR4) {
+                                        participant.setStep(Step.teamSave);
+                                        curServer.RRevent.nbTeams=nbTeam;
+                                        channel.createMessage("Do you want to save this team configuration for the event? (yes/no)").block(BLOCK);
+                                        return;
+                                    }
                                     participant.setStep(Step.begin);
                                     return;
                                 }
+
                                 case cancel:
                                     participant.setStep(Step.begin);
                                     channel.createMessage(user + " cancellation aborted you are still registered").block(BLOCK);
@@ -430,6 +454,33 @@ public class pingBot {
     }
     //static ArrayList<Participant> registered = new ArrayList<>();
 
+
+    static List<Participant> getRegisteredRRparticipants(HashMap<String,Participant> sessions) {
+        return sessions.values().stream()
+                .filter(i -> i.registered)
+                .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
+                .collect(Collectors.toList());
+    }
+    static ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered) {
+        if(registered.size()==0) return null;
+        ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
+        int[] power = new int[nbTeam];
+        for (int i = 0; i < nbTeam; ++i) {
+            teams.add(new ArrayList<>());
+        }
+        for (Participant p : registered) {
+            int best = 0, min = power[0];
+            for (int i = 1; i < nbTeam; ++i)
+                if (power[i] < min) {
+                    min = power[i];
+                    best = i;
+                }
+            teams.get(best).add(p);
+            power[best] += p.power;
+        }
+        return teams;
+    }
+
     @SuppressWarnings("unused")
     static String padStr(String s, int l) {
         return s.length() < l ? s+" ".repeat(l-s.length()) : s.substring(0,l);
@@ -470,9 +521,23 @@ public class pingBot {
     static class RREvent {
         String name="";
         boolean active=true;
+        boolean teamSaved=false;
         Guild guild;
+        int nbTeams=-1;
         public RREvent(Guild g) { this.guild=g;}
         public String toString() { return name+(active?"":"*");}
+        boolean saveTeams() {
+            try {
+                teamSaved=true;
+                RRsaveTeam.setLong(1,guild.getId().asLong());
+                RRsaveTeam.setString(2,name);
+                RRsaveTeam.executeUpdate();
+            } catch(SQLException se) {
+                se.printStackTrace();
+                return false;
+            }
+            return true;
+        }
     }
     static void inserRRevent(RREvent e) {
         try {
@@ -481,6 +546,7 @@ public class pingBot {
             insertE.setString(1, e.name);
             insertE.setBoolean(2, e.active);
             insertE.setLong(3, e.guild.getId().asLong());
+            insertE.setBoolean(4, e.teamSaved);
             insertE.executeUpdate();
             deleteP.setLong(1, e.guild.getId().asLong());
             deleteP.executeUpdate();
@@ -505,6 +571,7 @@ public class pingBot {
                 RREvent e=new RREvent(server.guild);
                 e.name=rs.getString("name");
                 e.active=rs.getBoolean("active");
+                e.teamSaved=rs.getBoolean("teamsaved");
                 server.RRevent = e;
 
             } else {
@@ -542,13 +609,16 @@ public class pingBot {
         String dbUrl = System.getenv("JDBC_DATABASE_URL");
         dbConnection = DriverManager.getConnection(dbUrl);
         insertP = dbConnection.prepareStatement("INSERT INTO rrparticipants(name,power,server) VALUES(?,?,?)", Statement.RETURN_GENERATED_KEYS);
-        insertE = dbConnection.prepareStatement("INSERT INTO rrevent(name,active,server) VALUES(?,?,?)", Statement.RETURN_GENERATED_KEYS);
+        insertE = dbConnection.prepareStatement("INSERT INTO rrevent(name,active,server,teamsaved) VALUES(?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
         closeE = dbConnection.prepareStatement("UPDATE rrevent set active='0' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
+        saveTeam = dbConnection.prepareStatement("UPDATE rrevent set teamsaved='t' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
         deleteE = dbConnection.prepareStatement("DELETE from rrevent where server=?", Statement.RETURN_GENERATED_KEYS);
         deleteP = dbConnection.prepareStatement("delete from rrparticipants where server=?");
         deleteOneP = dbConnection.prepareStatement("delete from rrparticipants where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
-        selectRRevent = dbConnection.prepareStatement("SELECT name,active FROM rrevent where server=?");
-        selectRRparticipants = dbConnection.prepareStatement("SELECT name,power FROM rrparticipants where server=?");
+        selectRRevent = dbConnection.prepareStatement("SELECT name,active,teamsaved FROM rrevent where server=?");
+        selectRRparticipants = dbConnection.prepareStatement("SELECT name,power,team FROM rrparticipants where server=?");
+        updateTeam =  dbConnection.prepareStatement("UPDATE  rrparticipants set team=? where server=? and name=?");
+        RRsaveTeam = dbConnection.prepareStatement("UPDATE  rrevent set teamsaved='t' where server=? and name=?");
     }
     static class Server {
         Guild guild;
@@ -567,10 +637,24 @@ public class pingBot {
         boolean registered=false;
         Step step=Step.begin;
         long timestamp;
+        int teamNumber=-1;
         void setStep(Step s) { step=s; timestamp=System.currentTimeMillis();}
         boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.begin;}
         Participant(String n,float pow) {name=n;power=pow; }
         public String toString() { return name+"\t"+power;}
+        public boolean updateTeam(int teamNb,long server) {
+            teamNumber=teamNb;
+            try {
+                updateTeam.setInt(1, teamNb);
+                updateTeam.setLong(2, server);
+                updateTeam.setString(3, name);
+                updateTeam.executeUpdate();
+            } catch(SQLException se) {
+                se.printStackTrace();
+                return false;
+            }
+            return true;
+        }
 
         public double getPower() { return power;}
     }

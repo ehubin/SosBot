@@ -19,6 +19,7 @@ Provides the list of currently registered participants to next RR event
 ### teams
 * When team composition is finalised allows to display the teams
 * If team composition not finalised this command allows R4 to decide how many teams they want then save the team composition
+
 ### create
 Allows to create the next RR event (you will need to provide a date). This is restricted to R4 only. It will wipe out the previous event's participant list
 ### closereg

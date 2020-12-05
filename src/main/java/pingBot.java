@@ -45,358 +45,367 @@ public class pingBot {
         final GatewayDiscordClient gateway = client.login().block();
 
 
-
-        BufferedWriter db=null;
-        //initFromFile();
-        try{
-            db = new BufferedWriter(new FileWriter(DbFile,true));
-            connectToDB();
-        } catch(Exception e) {
-            e.printStackTrace();
-        }
-        BufferedWriter finalDb = db;
         if(gateway==null) {
             System.err.println("Failed to initialize discord Gateway");
             System.exit(-1);
         }
-        gateway.on(MessageCreateEvent.class).subscribe(event -> {
-            final Message message = event.getMessage();
-            final TextChannel channel = ((TextChannel)message.getChannel().block());
-            if(channel == null) {
-                System.err.println("Error fetching channel info");
-                return;
-            }
-            Guild guild=event.getGuild().block();
-            Server curServer;
-            if(guild==null) {
-                System.err.println("Error fetching server info");
-                return;
-            } else {
-                curServer=servers.get(guild.getId().asString());
-                if(curServer==null) {
-                    curServer= new Server(guild);
-                    servers.put(guild.getId().asString(),curServer);
-                    initFromDB(curServer);
-                }
-                if(channelsCreated.get(guild.getName())==null) {
-                    AtomicBoolean foundRR = new AtomicBoolean(false);
-                    AtomicBoolean foundSC = new AtomicBoolean(false);
-                    AtomicReference<Snowflake> parentId=new AtomicReference<>();
-                    guild.getChannels().subscribe(c->{
-                        //System.out.println(c.getName()+" "+c.getType()+" "+c.getPosition());
-                        if(c.getName().equals("reservoir-raid")) foundRR.set(true);
-                        else if(c.getName().equals("showdown")) foundSC.set(true);
-                        else if(c.getName().equalsIgnoreCase("text channels")) {
-                            System.out.println("found parent");
-                            parentId.set(c.getId());
-                        }
-                    });
-                    if(!foundRR.get()) {
-                        System.out.println("Creating reservoir raid channel");
-                        guild.createTextChannel(c->{
-                            c.setName("reservoir-raid");
-                            c.setTopic("Channel for reservoir raid registration");
-                            if(parentId.get() != null) c.setParentId(parentId.get());
-                        }).doOnError(Throwable::printStackTrace);
-                                //.subscribe(System.out::println);
-
-                    }
-                    if(!foundSC.get()) {
-                        System.out.println("Creating showdown channel");
-                        guild.createTextChannel(c->{
-                            c.setName("showdown");
-                            c.setTopic("Channel for showdown registration");
-                            if(parentId.get() != null) c.setParentId(parentId.get());
-                        }).doOnError(Throwable::printStackTrace);
-                                //.subscribe(System.out::println);
-
-                    }
-                    channelsCreated.put(guild.getName(),true);
+        try {
+            connectToDB();
+        } catch (SQLException se) {
+            System.err.println("Failed to initialize database connection");
+            se.printStackTrace();
+            System.exit(-2);
+        }
+        //noinspection ResultOfMethodCallIgnored
+        gateway.on(MessageCreateEvent.class).map(pingBot::processMessage).onErrorContinue((error, event)->{
+            try {
+                error.printStackTrace();
+                final Message message = ((MessageCreateEvent) event).getMessage();
+                final TextChannel channel = ((TextChannel) message.getChannel().block());
+                if (channel == null) {
+                    System.err.println("Error fetching channel info");
                 }
             }
-            final String channelName =channel.getName();
-            if(channelName!= null &&
-                    (channelName.equals("reservoir-raid") || channelName.equals("showdown"))) {
-                String user;
-                Member m = message.getAuthorAsMember().block();
-                if(m==null) {
-                    System.err.println("Error fetching member info");
-                    return;
+            catch(Error e) {
+                System.err.println("Double error!!");
+                e.printStackTrace();
+            }
+        });
+        gateway.onDisconnect().block();
+    }
+    //static ArrayList<Participant> registered = new ArrayList<>();
+
+    static MessageCreateEvent processMessage( MessageCreateEvent event) {
+        final Message message = event.getMessage();
+        final TextChannel channel = ((TextChannel)message.getChannel().block());
+        if(channel == null) {
+            System.err.println("Error fetching channel info");
+            return event;
+        }
+        Guild guild=event.getGuild().block();
+        Server curServer;
+        if(guild==null) {
+            System.err.println("Error fetching server info");
+            return event;
+        } else {
+            curServer=servers.get(guild.getId().asString());
+            if(curServer==null) {
+                curServer= new Server(guild);
+                servers.put(guild.getId().asString(),curServer);
+                initFromDB(curServer);
+            }
+            if(channelsCreated.get(guild.getName())==null) {
+                AtomicBoolean foundRR = new AtomicBoolean(false);
+                AtomicBoolean foundSC = new AtomicBoolean(false);
+                AtomicReference<Snowflake> parentId=new AtomicReference<>();
+                guild.getChannels().subscribe(c->{
+                    //System.out.println(c.getName()+" "+c.getType()+" "+c.getPosition());
+                    if(c.getName().equals("reservoir-raid")) foundRR.set(true);
+                    else if(c.getName().equals("showdown")) foundSC.set(true);
+                    else if(c.getName().equalsIgnoreCase("text channels")) {
+                        System.out.println("found parent");
+                        parentId.set(c.getId());
+                    }
+                });
+                if(!foundRR.get()) {
+                    System.out.println("Creating reservoir raid channel");
+                    guild.createTextChannel(c->{
+                        c.setName("reservoir-raid");
+                        c.setTopic("Channel for reservoir raid registration");
+                        if(parentId.get() != null) c.setParentId(parentId.get());
+                    }).doOnError(Throwable::printStackTrace);
+                    //.subscribe(System.out::println);
+
                 }
-                final boolean[] foundR4= {false};
-                m.getRoles().subscribe( r-> {  if(r.getName().equals("R4")) foundR4[0]=true;});
-                boolean isR4 = foundR4[0];
-                user = m.getNickname().orElseGet(() -> message.getUserData().username());
-                if(!user.equals("SosBot"))   System.out.println("==>" + message.getContent() + ", " + user);
-                HashMap<String,Participant> sessions=curServer.sessions;
-                Participant participant = sessions.get(user);
-                if(participant==null) { participant=new Participant(user,-1); sessions.put(user,participant);}
-                String rawContent = message.getContent(),content=rawContent.trim().toLowerCase();
-                if(channelName.equals("reservoir-raid")) {
-                    switch (content) {
-                        case "help":
-                            channel.createMessage(RRhelpStr).block(BLOCK);
+                if(!foundSC.get()) {
+                    System.out.println("Creating showdown channel");
+                    guild.createTextChannel(c->{
+                        c.setName("showdown");
+                        c.setTopic("Channel for showdown registration");
+                        if(parentId.get() != null) c.setParentId(parentId.get());
+                    }).doOnError(Throwable::printStackTrace);
+                    //.subscribe(System.out::println);
+
+                }
+                channelsCreated.put(guild.getName(),true);
+            }
+        }
+        final String channelName =channel.getName();
+        if(channelName!= null &&
+                (channelName.equals("reservoir-raid") || channelName.equals("showdown"))) {
+            String user;
+            Member m = message.getAuthorAsMember().block();
+            if(m==null) {
+                System.err.println("Error fetching member info");
+                return event;
+            }
+            final boolean[] foundR4= {false};
+            m.getRoles().subscribe( r-> {  if(r.getName().equals("R4")) foundR4[0]=true;});
+            boolean isR4 = foundR4[0];
+            user = m.getNickname().orElseGet(() -> message.getUserData().username());
+            if(!user.equals("SosBot"))   System.out.println("==>" + message.getContent() + ", " + user);
+            HashMap<String,Participant> sessions=curServer.sessions;
+            Participant participant = sessions.get(user);
+            if(participant==null) { participant=new Participant(user,-1); sessions.put(user,participant);}
+            String rawContent = message.getContent(),content=rawContent.trim().toLowerCase();
+            if(channelName.equals("reservoir-raid")) {
+                switch (content) {
+                    case "help":
+                        channel.createMessage(RRhelpStr).block(BLOCK);
+                        participant.setStep(Step.begin);
+                        return event;
+                    case "list": {
+                        List<Participant> registered = sessions.values().stream()
+                                .filter(i -> i.registered)
+                                .sorted(Comparator.comparingDouble(Participant::getPower))
+                                .collect(Collectors.toList());
+                        if (registered.size() == 0) {
                             participant.setStep(Step.begin);
-                            return;
-                        case "list": {
-                            List<Participant> registered = sessions.values().stream()
-                                    .filter(i -> i.registered)
-                                    .sorted(Comparator.comparingDouble(Participant::getPower))
-                                    .collect(Collectors.toList());
-                            if (registered.size() == 0) {
-                                participant.setStep(Step.begin);
-                                channel.createMessage("Nobody registered yet").block(BLOCK);
-                                return;
-                            }
-                            StringBuilder sb = new StringBuilder("Registered so far for ").append(curServer.RRevent).append("\n```");
-                            int max = registered.stream().map(p -> p.name.length()).max(Integer::compareTo).get();
-                            for (Participant p : registered) {
-                                sb.append(p.name).append(" ".repeat(max + 5 - p.name.length())).append(p.power).append("\n");
-                            }
-                            sb.append("```");
-                            participant.setStep(Step.begin);
-                            channel.createMessage(sb.toString()).block(BLOCK);
-                            return;
+                            channel.createMessage("Nobody registered yet").block(BLOCK);
+                            return event;
                         }
-                        case "register":
-                            if (participant.registered) {
-                                channel.createMessage(user + " you are already registered!").block(BLOCK);
-                            } else if(!curServer.RRevent.active) {
-                                channel.createMessage(user + "RR event now closed to registrations!").block(BLOCK);
+                        StringBuilder sb = new StringBuilder("Registered so far for ").append(curServer.RRevent).append("\n```");
+                        int max = registered.stream().map(p -> p.name.length()).max(Integer::compareTo).get();
+                        for (Participant p : registered) {
+                            sb.append(p.name).append(" ".repeat(max + 5 - p.name.length())).append(p.power).append("\n");
+                        }
+                        sb.append("```");
+                        participant.setStep(Step.begin);
+                        channel.createMessage(sb.toString()).block(BLOCK);
+                        return event;
+                    }
+                    case "register":
+                        if (participant.registered) {
+                            channel.createMessage(user + " you are already registered!").block(BLOCK);
+                        } else if(!curServer.RRevent.active) {
+                            channel.createMessage(user + "RR event now closed to registrations!").block(BLOCK);
+                        }
+                        else {
+                            participant.setStep(Step.registration);
+                            channel.createMessage(user + " can you commit to be online " + curServer.RRevent + "(yes/no)").block(BLOCK);
+                        }
+                        return event;
+                    case "cancel":
+                        if (participant.registered) {
+                            participant.setStep(Step.cancel);
+                            channel.createMessage(user + " Do you really want to cancel your registration for " + curServer.RRevent + " (yes/no)").block(BLOCK);
+                        } else {
+                            participant.setStep(Step.begin);
+                            channel.createMessage(user + " You are not registered! No need to cancel!").block(BLOCK);
+                        }
+                        return event;
+                    case "create":
+                        if (!isR4) {
+                            channel.createMessage("Create command only allowed for R4 members").block(BLOCK);
+                            participant.setStep(Step.begin);
+                            return event;
+                        }
+                        participant.setStep(Step.create);
+                        channel.createMessage(user + " please enter event date (e.g Sunday the 12th at 20:00 utc)").block(BLOCK);
+                        return event;
+                    case "closereg":
+                        if(!isR4) {
+                            participant.setStep(Step.begin);
+                            channel.createMessage(user + "Stop registration only for R4").block(BLOCK);
+                            return event;
+                        }
+                        participant.setStep(Step.closeReg);
+                        channel.createMessage(user + " are you sure you want to stop registration for " + curServer.RRevent + "(yes/no)").block(BLOCK);
+                        return event;
+                    case "teams":
+                        if(curServer.RRevent.teamSaved) {
+                            participant.setStep(Step.begin);
+                            ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                            channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
+                            if(isR4) {
+                                channel.createMessage("You can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3").block(BLOCK);
+                                return event;
                             }
-                            else {
-                                    participant.setStep(Step.registration);
-                                    channel.createMessage(user + " can you commit to be online " + curServer.RRevent + "(yes/no)").block(BLOCK);
-                            }
-                            return;
-                        case "cancel":
-                            if (participant.registered) {
-                                participant.setStep(Step.cancel);
-                                channel.createMessage(user + " Do you really want to cancel your registration for " + curServer.RRevent + " (yes/no)").block(BLOCK);
-                            } else {
+                        } else {
+                            participant.setStep(Step.teamsNb);
+                            channel.createMessage("How many teams do you want?").block(BLOCK);
+                        }
+                        return event;
+                    case "yes":
+                        switch (participant.step) {
+                            case registration:
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " registration timed out!").block(BLOCK);
+                                    return event;
+                                }
+                                participant.setStep(Step.power);
+                                channel.createMessage("Please enter your current overall Battle Power(e.g 30 or 30.2) to help creating balanced teams").block(BLOCK);
+                                return event;
+                            case cancel:
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " cancellation timed out!").block(BLOCK);
+                                    return event;
+                                }
+                                participant.registered = false;
                                 participant.setStep(Step.begin);
-                                channel.createMessage(user + " You are not registered! No need to cancel!").block(BLOCK);
-                            }
-                            return;
-                        case "create":
-                            if (!isR4) {
-                                channel.createMessage("Create command only allowed for R4 members").block(BLOCK);
+                                deleteFromDB(participant,guild);
+                                channel.createMessage(user + " your registration has been cancelled!").block(BLOCK);
+                                return event;
+                            case confirmCreate:
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " creation timed out!").block(BLOCK);
+                                    return event;
+                                }
                                 participant.setStep(Step.begin);
-                                return;
+
+                                curServer.RRevent = curServer.newRRevent;
+                                curServer.newRRevent = new RREvent(guild);
+                                sessions.clear();
+                                inserRRevent(curServer.RRevent);
+                                channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").block(BLOCK);
+                                return event;
+                            case teamSave: {
+                                List<Participant> registered = getRegisteredRRparticipants(sessions);
+                                if(registered.size()==0) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(" Nobody registered yet!").block(BLOCK);
+                                    return event;
+                                }
+                                ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered,null);
+                                for(int i=0;i<curServer.RRevent.nbTeams;++i) {
+                                    assert teams != null;
+                                    for(Participant p:teams.get(i)) {
+                                        p.updateTeam(i+1,curServer.guild.getId().asLong());
+                                    }
+                                    curServer.RRevent.saveTeams();
+                                }
+                                return event;
                             }
-                            participant.setStep(Step.create);
-                            channel.createMessage(user + " please enter event date (e.g Sunday the 12th at 20:00 utc)").block(BLOCK);
-                            return;
-                        case "closereg":
+                            case closeReg:
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " stop registration timed out!").block(BLOCK);
+                                    return event;
+                                }
+
+                                participant.setStep(Step.begin);
+                                // update DB
+                                curServer.RRevent.active = false;
+                                closeRREvent(curServer.RRevent);
+                                channel.createMessage("Event \"" + curServer.RRevent + "\" now closed for registration! you can still get teams or list of participants").block(BLOCK);
+                                return event;
+                        }
+                    default:
+                        if(content.startsWith("r4reg")) {
                             if(!isR4) {
-                                participant.setStep(Step.begin);
-                                channel.createMessage(user + "Stop registration only for R4").block(BLOCK);
-                                return;
+                                channel.createMessage("only R4 can use r4reg command").block(BLOCK);
+                                return event;
                             }
-                            participant.setStep(Step.closeReg);
-                            channel.createMessage(user + " are you sure you want to stop registration for " + curServer.RRevent + "(yes/no)").block(BLOCK);
-                            return;
-                        case "teams":
-                            if(curServer.RRevent.teamSaved) {
-                                participant.setStep(Step.begin);
-                                ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                            Matcher ma=registerPattern.matcher(rawContent.substring(6));
+                            if(ma.find()) {
+                                float pow=Float.parseFloat(ma.group(2));
+                                System.out.println("registering "  + ma.group(1) + "| " + ma.group(2));
+                                Participant p = new Participant(ma.group(1), pow);
+                                p.registered=true;
+                                sessions.put(ma.group(1),p);
+                                insertParticipant(p,guild);
+                                channel.createMessage("Succesfully registered "+p).block(BLOCK);
+                            } else {
+                                channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
+                            }
+                            return event;
+                        }
+                        switch (participant.step) {
+                            case power:
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " registration timed out!").block(BLOCK);
+                                    return event;
+                                }
+                                float pow;
+                                try {
+                                    pow = Float.parseFloat(content);
+                                } catch (NumberFormatException nfe) {
+                                    channel.createMessage("incorrect number format " + content).block(BLOCK);
+                                    return event;
+                                }
+                                if (pow < 0.1 || pow > 300.) {
+                                    channel.createMessage("incorrect power value " + content).block(BLOCK);
+                                } else {
+                                    participant.power = pow;
+                                    participant.setStep(Step.begin);
+                                    participant.registered = true;
+                                    insertParticipant(participant,guild);
+                                    channel.createMessage(user + " your registration is confirmed we count on you!").block(BLOCK);
+                                }
+                                return event;
+                            case teamsNb: {
+                                if (participant.timedOut()) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(user + " teams timed out!").block(BLOCK);
+                                    return event;
+                                }
+                                int nbTeam;
+                                try {
+                                    nbTeam = Integer.parseInt(content);
+                                } catch (NumberFormatException ne) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage("Wrong number of teams " + content).block(BLOCK);
+                                    return event;
+                                }
+                                if(nbTeam<=0 || nbTeam>5) {
+                                    channel.createMessage("Number of teams should be between 1 and 5").block(BLOCK);
+                                    return event;
+                                }
+
+
+                                List<Participant> registered = getRegisteredRRparticipants(sessions);
+                                if(registered.size()==0) {
+                                    participant.setStep(Step.begin);
+                                    channel.createMessage(" Nobody registered yet!").block(BLOCK);
+                                    return event;
+                                }
+                                int[] power = new int[nbTeam];
+                                ArrayList<ArrayList<Participant>> teams = getRRTeams(nbTeam,registered,power);
+                                assert(teams!= null);
                                 channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
                                 if(isR4) {
-                                    channel.createMessage("You can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3").block(BLOCK);
-                                    return;
+                                    participant.setStep(Step.teamSave);
+                                    curServer.RRevent.nbTeams=nbTeam;
+                                    channel.createMessage("Do you want to save this team configuration for the event? (yes/no)").block(BLOCK);
+                                    return event;
                                 }
-                            } else {
-                                participant.setStep(Step.teamsNb);
-                                channel.createMessage("How many teams do you want?").block(BLOCK);
+                                participant.setStep(Step.begin);
+                                return event;
                             }
-                            return;
-                        case "yes":
-                            switch (participant.step) {
-                                case registration:
-                                    if (participant.timedOut()) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(user + " registration timed out!").block(BLOCK);
-                                        return;
-                                    }
-                                    participant.setStep(Step.power);
-                                    channel.createMessage("Please enter your current overall Battle Power(e.g 30 or 30.2) to help creating balanced teams").block(BLOCK);
-                                    return;
-                                case cancel:
-                                    if (participant.timedOut()) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(user + " cancellation timed out!").block(BLOCK);
-                                        return;
-                                    }
-                                    participant.registered = false;
-                                    participant.setStep(Step.begin);
-                                    deleteFromDB(participant,guild);
-                                    channel.createMessage(user + " your registration has been cancelled!").block(BLOCK);
-                                    return;
-                                case confirmCreate:
-                                    if (participant.timedOut()) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(user + " creation timed out!").block(BLOCK);
-                                        return;
-                                    }
-                                    participant.setStep(Step.begin);
 
-                                    curServer.RRevent = curServer.newRRevent;
-                                    curServer.newRRevent = new RREvent(guild);
-                                    sessions.clear();
-                                    inserRRevent(curServer.RRevent);
-                                    channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").block(BLOCK);
-                                    return;
-                                case teamSave: {
-                                    List<Participant> registered = getRegisteredRRparticipants(sessions);
-                                    if(registered.size()==0) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(" Nobody registered yet!").block(BLOCK);
-                                        return;
-                                    }
-                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered,null);
-                                    for(int i=0;i<curServer.RRevent.nbTeams;++i) {
-                                        assert teams != null;
-                                        for(Participant p:teams.get(i)) {
-                                            p.updateTeam(i+1,curServer.guild.getId().asLong());
-                                        }
-                                        curServer.RRevent.saveTeams();
-                                    }
-                                    return;
-                                }
-                                case closeReg:
-                                    if (participant.timedOut()) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(user + " stop registration timed out!").block(BLOCK);
-                                        return;
-                                    }
-
-                                    participant.setStep(Step.begin);
-                                    // update DB
-                                    curServer.RRevent.active = false;
-                                    closeRREvent(curServer.RRevent);
-                                    channel.createMessage("Event \"" + curServer.RRevent + "\" now closed for registration! you can still get teams or list of participants").block(BLOCK);
-                                    return;
-                            }
-                        default:
-                            if(content.startsWith("r4reg")) {
-                                if(!isR4) {
-                                    channel.createMessage("only R4 can use r4reg command").block(BLOCK);
-                                    return;
-                                }
-                                Matcher ma=registerPattern.matcher(rawContent.substring(6));
-                                if(ma.find()) {
-                                    float pow=Float.parseFloat(ma.group(2));
-                                    System.out.println("registering "  + ma.group(1) + "| " + ma.group(2));
-                                    Participant p = new Participant(ma.group(1), pow);
-                                    p.registered=true;
-                                    sessions.put(ma.group(1),p);
-                                    insertParticipant(p,guild);
-                                    channel.createMessage("Succesfully registered "+p).block(BLOCK);
-                                } else {
-                                    channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
-                                }
-                                return;
-                            }
-                            switch (participant.step) {
-                                case power:
-                                    if (participant.timedOut()) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(user + " registration timed out!").block(BLOCK);
-                                        return;
-                                    }
-                                    float pow;
-                                    try {
-                                        pow = Float.parseFloat(content);
-                                    } catch (NumberFormatException nfe) {
-                                        channel.createMessage("incorrect number format " + content).block(BLOCK);
-                                        return;
-                                    }
-                                    if (pow < 0.1 || pow > 300.) {
-                                        channel.createMessage("incorrect power value " + content).block(BLOCK);
-                                    } else {
-                                        participant.power = pow;
-                                        participant.setStep(Step.begin);
-                                        participant.registered = true;
-                                        try {
-                                            finalDb.write(participant + "\n");
-                                            finalDb.flush();
-                                        } catch (IOException e) {
-                                            e.printStackTrace();
-                                            return;
-                                        }
-                                        insertParticipant(participant,guild);
-                                        channel.createMessage(user + " your registration is confirmed we count on you!").block(BLOCK);
-                                    }
-                                    return;
-                                case teamsNb: {
-                                    if (participant.timedOut()) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(user + " teams timed out!").block(BLOCK);
-                                        return;
-                                    }
-                                    int nbTeam;
-                                    try {
-                                        nbTeam = Integer.parseInt(content);
-                                    } catch (NumberFormatException ne) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage("Wrong number of teams " + content).block(BLOCK);
-                                        return;
-                                    }
-                                    if(nbTeam<=0 || nbTeam>5) {
-                                        channel.createMessage("Number of teams should be between 1 and 5").block(BLOCK);
-                                        return;
-                                    }
-
-
-                                    List<Participant> registered = getRegisteredRRparticipants(sessions);
-                                    if(registered.size()==0) {
-                                        participant.setStep(Step.begin);
-                                        channel.createMessage(" Nobody registered yet!").block(BLOCK);
-                                        return;
-                                    }
-                                    int[] power = new int[nbTeam];
-                                    ArrayList<ArrayList<Participant>> teams = getRRTeams(nbTeam,registered,power);
-                                    assert(teams!= null);
-                                    channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
-                                    if(isR4) {
-                                        participant.setStep(Step.teamSave);
-                                        curServer.RRevent.nbTeams=nbTeam;
-                                        channel.createMessage("Do you want to save this team configuration for the event? (yes/no)").block(BLOCK);
-                                        return;
-                                    }
-                                    participant.setStep(Step.begin);
-                                    return;
-                                }
-
-                                case cancel:
-                                    participant.setStep(Step.begin);
-                                    channel.createMessage(user + " cancellation aborted you are still registered").block(BLOCK);
-                                    return;
-                                case registration:
-                                    participant.setStep(Step.begin);
-                                    channel.createMessage("registration aborted").block(BLOCK);
-                                    return;
-                                case create:
-                                    curServer.newRRevent.name = rawContent.trim();
-                                    participant.setStep(Step.confirmCreate);
-                                    channel.createMessage("do you confirm you want to create new RR event \"" + curServer.newRRevent + "\" (yes/no)").block(BLOCK);
-                                    return;
-                                case confirmCreate:
-                                    participant.setStep(Step.begin);
-                                    channel.createMessage("creation of event aborted").block(BLOCK);
-                            }
-                    }
-                }   else //noinspection ConstantConditions
-                    if(channelName.equalsIgnoreCase("showdown")) {
+                            case cancel:
+                                participant.setStep(Step.begin);
+                                channel.createMessage(user + " cancellation aborted you are still registered").block(BLOCK);
+                                return event;
+                            case registration:
+                                participant.setStep(Step.begin);
+                                channel.createMessage("registration aborted").block(BLOCK);
+                                return event;
+                            case create:
+                                curServer.newRRevent.name = rawContent.trim();
+                                participant.setStep(Step.confirmCreate);
+                                channel.createMessage("do you confirm you want to create new RR event \"" + curServer.newRRevent + "\" (yes/no)").block(BLOCK);
+                                return event;
+                            case confirmCreate:
+                                participant.setStep(Step.begin);
+                                channel.createMessage("creation of event aborted").block(BLOCK);
+                        }
+                }
+            }   else //noinspection ConstantConditions
+                if(channelName.equalsIgnoreCase("showdown")) {
                     switch (content) {
                         case "help":
                             channel.createMessage(SDhelpStr).block(BLOCK);
                             participant.setStep(Step.begin);
-                            return;
+                            return event;
                         case "register": {
                             channel.createMessage("Please enter your power in million with one decimal precision (e.g 25.3)").block(BLOCK);
                             participant.setStep(Step.power);
-                            return;
+                            return event;
                         }
                         case "lanes": {
 
@@ -406,14 +415,14 @@ public class pingBot {
                                 if (participant.timedOut()) {
                                     participant.setStep(Step.begin);
                                     channel.createMessage(user + "registration timed out!").block(BLOCK);
-                                    return;
+                                    return event;
                                 }
                                 float pow;
                                 try {
                                     pow = Float.parseFloat(content);
                                 } catch (NumberFormatException nfe) {
                                     channel.createMessage("incorrect number format " + content).block(BLOCK);
-                                    return;
+                                    return event;
                                 }
                                 if (pow < 0.1 || pow > 300.) {
                                     channel.createMessage("incorrect power value " + content).block(BLOCK);
@@ -430,12 +439,9 @@ public class pingBot {
                         }
                     }
                 }
-            }
-        }, Throwable::printStackTrace);
-        gateway.onDisconnect().block();
+        }
+        return event;
     }
-    //static ArrayList<Participant> registered = new ArrayList<>();
-
 
     static List<Participant> getRegisteredRRparticipants(HashMap<String,Participant> sessions) {
         return sessions.values().stream().filter(i -> i.registered)
@@ -468,7 +474,7 @@ public class pingBot {
                 .collect(Collectors.toList());
         ArrayList<ArrayList<Participant>> res = new ArrayList<>();
         for(Participant p:list) {
-            if(res.size()<p.teamNumber) res.add(new ArrayList<>());
+            while(res.size()<p.teamNumber) res.add(new ArrayList<>());
             res.get(p.teamNumber-1).add(p);
         }
         return res;

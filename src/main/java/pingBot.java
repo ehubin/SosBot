@@ -278,7 +278,7 @@ public class pingBot {
                             final byte[] img=bos.toByteArray();
                             channel.createMessage(mcs-> {
                                 mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
-                                mcs.setEmbed(ecs-> ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW));
+                                mcs.setEmbed(ecs-> ecs.setImage("attachment://rrmap.png?672").setColor(Color.MOON_YELLOW));
                             }).block();
                         } catch(Exception e){
                             e.printStackTrace();

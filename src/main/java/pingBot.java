@@ -8,11 +8,14 @@ import discord4j.core.object.entity.channel.TextChannel;
 import discord4j.rest.util.Color;
 
 
-
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -31,7 +34,8 @@ public class pingBot {
                                       "closeReg             close event registration process\n" +
                                       "r4reg <name> <power> allows to register another player (only for R4s)\n"+
                                       "teams                give a breakdown of participants into teams\n"+
-                                      "swap x.y z.t         swaps player y in team x with player t in team z```";
+                                      "swap x.y z.t         swaps player y in team x with player t in team z\n"+
+                                      "showmap              displays a map of the game suggesting team placements```";
     static final String SDhelpStr= "```register    starts registering to event\n" +
                                       "lanes       displays list of registered members for next event\n"+
                                       "create      create a new event```";
@@ -42,6 +46,7 @@ public class pingBot {
     static final Duration BLOCK=Duration.ofSeconds(3);
     static HashMap<String,Server> servers= new HashMap<>();
     static HashMap<String,Boolean> channelsCreated= new HashMap<>();
+    static BufferedImage rrmap,tmpImage;
 
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
@@ -59,6 +64,14 @@ public class pingBot {
             System.err.println("Failed to initialize database connection");
             se.printStackTrace();
             System.exit(-2);
+        }
+        try {
+            rrmap = ImageIO.read(new File("docs/rrmap.png"));
+            tmpImage = new BufferedImage(rrmap.getColorModel(),
+                    rrmap.copyData(null),
+                    rrmap.isAlphaPremultiplied(),null);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         gateway.on(MessageCreateEvent.class).map(pingBot::processMessage).onErrorContinue((error, event)->{
@@ -247,6 +260,33 @@ public class pingBot {
                             channel.createMessage("How many teams do you want?").block(BLOCK);
                         }
                         return event;
+                    case "showmap": {
+                        if(!curServer.RRevent.teamSaved) {
+                            channel.createMessage("Can only display map when teams have been saved.").block(BLOCK);
+                            return event;
+                        }
+                        ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                        //Graphics2D g2d=tmpImage.createGraphics();
+
+                        try {
+                            PipedOutputStream pos = new PipedOutputStream();
+                            PipedInputStream pis = new PipedInputStream(pos);
+                            Thread t = new Thread(()->{
+                                try {
+                                    ImageIO.write(tmpImage,"PNG",pos);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            });
+                            t.start();
+                            channel.createMessage(mcs-> mcs.addFile("reservoir raid map",pis));
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+
+
+                    }
+                    return event;
                     case "yes":
                         switch (participant.step) {
                             case registration:
@@ -758,5 +798,6 @@ public class pingBot {
 
         public double getPower() { return power;}
     }
+
 }
 

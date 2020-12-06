@@ -9,6 +9,8 @@ import discord4j.rest.util.Color;
 
 
 import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.sql.*;
@@ -265,13 +267,16 @@ public class pingBot {
                             return event;
                         }
                         ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
-                        //Graphics2D g2d=tmpImage.createGraphics();
-
+                        Graphics2D g2d=tmpImage.createGraphics();
+                        String[] leaders= new String[teams.size()];
+                        int i=0;
+                        for(ArrayList<Participant> t:teams) { leaders[i++]= t.get(0).name;}
+                        RRmapTeam.drawTeams(g2d,leaders);
                         try {
                             ByteArrayOutputStream bos= new ByteArrayOutputStream();
                             ImageIO.write(tmpImage,"PNG",bos);
                             byte[] img=bos.toByteArray();
-                            channel.createMessage(mcs-> mcs.addFile("reservoir raid map",new ByteArrayInputStream(img)));
+                            channel.createMessage(mcs-> mcs.addFile("reservoir raid map",new ByteArrayInputStream(img))).block();
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -789,6 +794,61 @@ public class pingBot {
         }
 
         public double getPower() { return power;}
+    }
+
+    // class to draw teams on RR map
+    private static class RRmapTeam {
+        static final java.awt.Color mygreen = new java.awt.Color(11, 181, 51);
+        static RRmapTeam[] get = {
+                new RRmapTeam(365,25,180,120,475,25, java.awt.Color.MAGENTA,true,Math.PI/5),
+                new RRmapTeam(385,225,175,80,485,325, java.awt.Color.CYAN,true,-Math.PI/6),
+                new RRmapTeam(205,100,250,120,435,190,mygreen, true,Math.PI/5),
+                new RRmapTeam(125,200,180,120,160,190, java.awt.Color.RED,false,Math.PI/5),
+                new RRmapTeam(95,20,175,80,160,25, java.awt.Color.BLUE,false,-Math.PI/6)
+        };
+
+        static int[][] mapping = { {3},{1,4},{3,1,4},{2,1,4,5},{3,1,4,2,5}};
+        int fromx,fromy,width,height,stringx,stringy;
+        java.awt.Color c;
+        boolean stringAlign;
+        double angle;
+        RRmapTeam(int x, int y, int w, int h, int sx, int sy, java.awt.Color co, boolean right, double a) {
+            fromx=x; fromy=y; width=w;height=h; stringx=sx; stringy=sy; c=co; stringAlign=right; angle=a;
+        }
+        void draw(Graphics2D g2d, String name) {
+            drawString(g2d,name,c,stringx,stringy,stringAlign);
+            drawOval(g2d,fromx,fromy,width,height,c,angle);
+        }
+        static void drawTeam(Graphics2D g2d,int nb,String name) { RRmapTeam.get[nb-1].draw(g2d,name);}
+
+        static void drawTeams(Graphics2D g2d,String[] teamLeaders) {
+            if(teamLeaders.length <1 || teamLeaders.length >5)  {
+                System.err.println("Not right # of team leaders "+teamLeaders.length);
+                return;
+            }
+            int[] teamMap= mapping[teamLeaders.length-1];
+            for(int i=0; i<teamLeaders.length;++i) {
+                drawTeam(g2d,teamMap[i],teamLeaders[i]);
+            }
+            if(teamLeaders.length == 2 || teamLeaders.length == 4 ) {
+                drawString(g2d,teamLeaders[0]+" goes to center after 10 mins",
+                        RRmapTeam.get[teamMap[0]-1].c, 10,150,true);
+            }
+        }
+        private static void drawOval(Graphics2D g2d, int fromx, int fromy, int width, int height, java.awt.Color c, double angle) {
+            //noinspection IntegerDivisionInFloatingPointContext
+            g2d.setTransform(AffineTransform.getRotateInstance(angle,fromx+width/2,fromy+height/2));
+            g2d.setPaint(c);
+            g2d.setStroke(new BasicStroke((float) 3.0));
+            g2d.drawOval(fromx,fromy,width,height);
+        }
+
+        private static void drawString(Graphics2D g2d, String txt, java.awt.Color c, int x, int y, boolean totheright) {
+            g2d.setPaint(c);
+            g2d.setTransform(AffineTransform.getRotateInstance(0));
+            if(!totheright) x-= g2d.getFontMetrics().stringWidth(txt);
+            g2d.drawString(txt,x,y);
+        }
     }
 
 }

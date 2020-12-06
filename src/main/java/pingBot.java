@@ -582,7 +582,7 @@ public class pingBot {
             power[best] += p.power;
         }
         teams.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
-                Float.compare(t1.get(0).power, t2.get(0).power));
+                Float.compare(t2.get(0).power, t1.get(0).power));
         return teams;
     }
     static ArrayList<ArrayList<Participant>> getRRSavedTeams(Collection<Participant> all) {
@@ -595,7 +595,7 @@ public class pingBot {
             res.get(p.teamNumber-1).add(p);
         }
         res.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
-                Float.compare(t1.get(0).power, t2.get(0).power));
+                Float.compare(t2.get(0).power, t1.get(0).power));
         return res;
     }
     static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {

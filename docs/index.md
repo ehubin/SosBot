@@ -28,4 +28,6 @@ Command used by R4s to close registration process. After that nobody can registe
 Allows an R4 to swap participants between 2 teams. Only work when team composition has been saved
 ### r4reg playername playerpower
 Allows an R4 to register another player
+### showmap
+displays an image with a map of the game suggesting team placements
 

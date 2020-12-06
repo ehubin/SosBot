@@ -9,7 +9,6 @@ import discord4j.rest.util.Color;
 
 
 import javax.imageio.ImageIO;
-import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.sql.*;
@@ -170,7 +169,7 @@ public class pingBot {
             }
             final boolean[] foundR4= {false};
             m.getRoles().subscribe( r-> {
-                System.out.println(r);
+                //System.out.println(r);
                 if(r.getName().equals("R4")) foundR4[0]=true;
             });
             boolean isR4 = foundR4[0];
@@ -269,17 +268,10 @@ public class pingBot {
                         //Graphics2D g2d=tmpImage.createGraphics();
 
                         try {
-                            PipedOutputStream pos = new PipedOutputStream();
-                            PipedInputStream pis = new PipedInputStream(pos);
-                            Thread t = new Thread(()->{
-                                try {
-                                    ImageIO.write(tmpImage,"PNG",pos);
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                }
-                            });
-                            t.start();
-                            channel.createMessage(mcs-> mcs.addFile("reservoir raid map",pis));
+                            ByteArrayOutputStream bos= new ByteArrayOutputStream();
+                            ImageIO.write(tmpImage,"PNG",bos);
+                            byte[] img=bos.toByteArray();
+                            channel.createMessage(mcs-> mcs.addFile("reservoir raid map",new ByteArrayInputStream(img)));
                         } catch (Exception e) {
                             e.printStackTrace();
                         }

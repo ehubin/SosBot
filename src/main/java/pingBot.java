@@ -5,10 +5,7 @@ import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
-import discord4j.discordjson.json.*;
-import discord4j.discordjson.possible.Possible;
 import discord4j.rest.util.Color;
-import discord4j.rest.util.MultipartRequest;
 
 
 import javax.imageio.ImageIO;
@@ -274,27 +271,19 @@ public class pingBot {
                         String[] leaders= new String[teams.size()];
                         int i=0;
                         for(ArrayList<Participant> t:teams) { leaders[i++]= t.get(0).name;}
+                        g2d.drawImage(rrmap,0,0,null);
                         RRmapTeam.drawTeams(g2d,leaders);
                         try {
                             ByteArrayOutputStream bos= new ByteArrayOutputStream();
                             ImageIO.write(tmpImage,"PNG",bos);
                             final byte[] img=bos.toByteArray();
-                            EmbedImageData eid =EmbedImageData.builder()
-                                    .url("attachment://rrmap.png").width(672).height(337).build();
-                            EmbedData ed = EmbedData.builder().image(eid).color(0xff).build();
-                            MessageCreateRequest mcr = MessageCreateRequest.builder().embed(ed).build();
-                            MultipartRequest mpr=new MultipartRequest(mcr,"rrmap.png",new ByteArrayInputStream(img));
-                            Message theMsg=new Message(event.getClient(),channel.getRestChannel().createMessage(mpr).block());
-                            theMsg.publish().block();
-                            /*channel.createMessage(mcs-> {
+                            channel.createMessage(mcs-> {
                                 mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
                                 mcs.setEmbed(ecs-> ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW));
-                            }).block();*/
+                            }).block();
                         } catch(Exception e){
                             e.printStackTrace();
                         }
-
-
                     }
                     return event;
                     case "yes":

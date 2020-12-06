@@ -139,7 +139,7 @@ public class pingBot {
                     System.out.println("Creating R4 role for "+guild.getName());
                    guild.createRole(rcs -> {
                        rcs.setName("R4");
-                       rcs.setColor(Color.BLUE);
+                       rcs.setColor(Color.MOON_YELLOW);
                        rcs.setReason("This is a role for R4 members");
                     }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
                 }

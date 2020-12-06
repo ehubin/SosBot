@@ -296,7 +296,7 @@ public class pingBot {
                                     for(Participant p:teams.get(i)) {
                                         p.updateTeam(i+1,curServer.guild.getId().asLong());
                                     }
-                                    curServer.RRevent.saveTeams();
+                                    curServer.RRevent.saveTeams(true);
                                 }
                                 return event;
                             }
@@ -328,6 +328,11 @@ public class pingBot {
                                 p.registered=true;
                                 sessions.put(ma.group(1),p);
                                 insertParticipant(p,guild);
+                                if(curServer.RRevent.teamSaved) {
+                                    // unsave the teams as a new participant has been added otherwise he will be in no team
+                                    curServer.RRevent.saveTeams(false);
+                                    channel.createMessage("Removing saved team while adding new user").block(BLOCK);
+                                }
                                 channel.createMessage("Succesfully registered "+p).block(BLOCK);
                             } else {
                                 channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
@@ -399,6 +404,11 @@ public class pingBot {
                                     participant.setStep(Step.begin);
                                     participant.registered = true;
                                     insertParticipant(participant,guild);
+                                    if(curServer.RRevent.teamSaved) {
+                                        // unsave the teams as a new participant has been added otherwise he will be in no team
+                                        curServer.RRevent.saveTeams(false);
+                                        channel.createMessage("Removing saved team while adding new user").block(BLOCK);
+                                    }
                                     channel.createMessage(user + " your registration is confirmed we count on you!").block(BLOCK);
                                 }
                                 return event;
@@ -609,11 +619,12 @@ public class pingBot {
         int nbTeams=-1;
         public RREvent(Guild g) { this.guild=g;}
         public String toString() { return name+(active?"":"*");}
-        boolean saveTeams() {
+        boolean saveTeams(boolean saved) {
             try {
-                teamSaved=true;
-                RRsaveTeam.setLong(1,guild.getId().asLong());
-                RRsaveTeam.setString(2,name);
+                teamSaved=saved;
+                RRsaveTeam.setBoolean(1,saved);
+                RRsaveTeam.setLong(2,guild.getId().asLong());
+                RRsaveTeam.setString(3,name);
                 RRsaveTeam.executeUpdate();
             } catch(SQLException se) {
                 se.printStackTrace();
@@ -702,7 +713,7 @@ public class pingBot {
         selectRRevent = dbConnection.prepareStatement("SELECT name,active,teamsaved FROM rrevent where server=?");
         selectRRparticipants = dbConnection.prepareStatement("SELECT name,power,team FROM rrparticipants where server=?");
         updateTeam =  dbConnection.prepareStatement("UPDATE  rrparticipants set team=? where server=? and name=?");
-        RRsaveTeam = dbConnection.prepareStatement("UPDATE  rrevent set teamsaved='t' where server=? and name=?");
+        RRsaveTeam = dbConnection.prepareStatement("UPDATE  rrevent set teamsaved=? where server=? and name=?");
     }
     static class Server {
         Guild guild;

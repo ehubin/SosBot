@@ -8,6 +8,7 @@ import discord4j.core.object.entity.channel.TextChannel;
 import discord4j.rest.util.Color;
 
 
+
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
@@ -112,23 +113,21 @@ public class pingBot {
                     }
                 });
                 if(!foundRR.get()) {
-                    System.out.println("Creating reservoir raid channel");
+                    System.out.println("Creating reservoir raid channel for "+guild.getName());
                     guild.createTextChannel(c->{
                         c.setName("reservoir-raid");
                         c.setTopic("Channel for reservoir raid registration");
                         if(parentId.get() != null) c.setParentId(parentId.get());
-                    }).doOnError(Throwable::printStackTrace);
-                    //.subscribe(System.out::println);
+                    }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
 
                 }
                 if(!foundSC.get()) {
-                    System.out.println("Creating showdown channel");
-                    guild.createTextChannel(c->{
+                    System.out.println("Creating showdown channel for "+guild.getName());
+                   guild.createTextChannel(c->{
                         c.setName("showdown");
                         c.setTopic("Channel for showdown registration");
                         if(parentId.get() != null) c.setParentId(parentId.get());
-                    }).doOnError(Throwable::printStackTrace);
-                    //.subscribe(System.out::println);
+                    }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
 
                 }
                 //create R4 role if it does not already exists
@@ -137,12 +136,12 @@ public class pingBot {
                     if(r.getName().equals("R4")) foundR4.set(true);
                 });
                 if(!foundR4.get()) {
-                    System.out.println("Creating R$ role...");
-                    guild.createRole( rcs -> {
+                    System.out.println("Creating R4 role for "+guild.getName());
+                   guild.createRole(rcs -> {
                        rcs.setName("R4");
                        rcs.setColor(Color.BLUE);
                        rcs.setReason("This is a role for R4 members");
-                    });
+                    }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
                 }
                 channelsCreated.put(guild.getName(),true);
             }

@@ -5,7 +5,10 @@ import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.TextChannel;
+import discord4j.discordjson.json.*;
+import discord4j.discordjson.possible.Possible;
 import discord4j.rest.util.Color;
+import discord4j.rest.util.MultipartRequest;
 
 
 import javax.imageio.ImageIO;
@@ -276,10 +279,17 @@ public class pingBot {
                             ByteArrayOutputStream bos= new ByteArrayOutputStream();
                             ImageIO.write(tmpImage,"PNG",bos);
                             final byte[] img=bos.toByteArray();
-                            channel.createMessage(mcs-> {
+                            EmbedImageData eid =EmbedImageData.builder()
+                                    .url("attachment://rrmap.png").width(672).height(337).build();
+                            EmbedData ed = EmbedData.builder().image(eid).color(0xff).build();
+                            MessageCreateRequest mcr = MessageCreateRequest.builder().embed(ed).build();
+                            MultipartRequest mpr=new MultipartRequest(mcr,"rrmap.png",new ByteArrayInputStream(img));
+                            Message theMsg=new Message(event.getClient(),channel.getRestChannel().createMessage(mpr).block());
+                            theMsg.publish().block();
+                            /*channel.createMessage(mcs-> {
                                 mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
-                                mcs.setEmbed(ecs-> ecs.setImage("attachment://rrmap.png?672").setColor(Color.MOON_YELLOW));
-                            }).block();
+                                mcs.setEmbed(ecs-> ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW));
+                            }).block();*/
                         } catch(Exception e){
                             e.printStackTrace();
                         }

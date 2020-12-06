@@ -156,7 +156,10 @@ public class pingBot {
                 return event;
             }
             final boolean[] foundR4= {false};
-            m.getRoles().subscribe( r-> {  if(r.getName().equals("R4")) foundR4[0]=true;});
+            m.getRoles().subscribe( r-> {
+                System.out.println(r);
+                if(r.getName().equals("R4")) foundR4[0]=true;
+            });
             boolean isR4 = foundR4[0];
             user = m.getNickname().orElseGet(() -> message.getUserData().username());
             // don't process bot messages and log user messages

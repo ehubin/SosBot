@@ -330,8 +330,8 @@ public class pingBot {
                                     return event;
                                 }
                                 ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered,null);
-                                for(int i=0;i<curServer.RRevent.nbTeams;++i) {
-                                    assert teams != null;
+                                assert teams != null;
+                                for(int i=0;i<teams.size();++i) {
                                     for(Participant p:teams.get(i)) {
                                         p.updateTeam(i+1,curServer.guild.getId().asLong());
                                     }
@@ -565,6 +565,7 @@ public class pingBot {
     }
     static ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered,int[] power) {
         if(registered.size()==0) return null;
+        if(registered.size()<nbTeam) nbTeam=registered.size();
         ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
         if(power==null) power = new int[nbTeam];
         for (int i = 0; i < nbTeam; ++i) {
@@ -580,6 +581,8 @@ public class pingBot {
             teams.get(best).add(p);
             power[best] += p.power;
         }
+        teams.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
+                Float.compare(t1.get(0).power, t2.get(0).power));
         return teams;
     }
     static ArrayList<ArrayList<Participant>> getRRSavedTeams(Collection<Participant> all) {
@@ -591,6 +594,8 @@ public class pingBot {
             while(res.size()<p.teamNumber) res.add(new ArrayList<>());
             res.get(p.teamNumber-1).add(p);
         }
+        res.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
+                Float.compare(t1.get(0).power, t2.get(0).power));
         return res;
     }
     static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {

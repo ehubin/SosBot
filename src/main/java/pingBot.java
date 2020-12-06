@@ -829,6 +829,9 @@ public class pingBot {
         static void drawTeam(Graphics2D g2d,int nb,String name) { RRmapTeam.get[nb-1].draw(g2d,name);}
 
         static void drawTeams(Graphics2D g2d,String[] teamLeaders) {
+            Font currentFont=g2d.getFont();
+            Font newFont = currentFont.deriveFont(Font.BOLD,18.0f);
+            g2d.setFont(newFont);
             if(teamLeaders.length <1 || teamLeaders.length >5)  {
                 System.err.println("Not right # of team leaders "+teamLeaders.length);
                 return;

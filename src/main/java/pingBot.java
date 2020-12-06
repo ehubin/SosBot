@@ -275,9 +275,12 @@ public class pingBot {
                         try {
                             ByteArrayOutputStream bos= new ByteArrayOutputStream();
                             ImageIO.write(tmpImage,"PNG",bos);
-                            byte[] img=bos.toByteArray();
-                            channel.createMessage(mcs-> mcs.addFile("reservoir raid map",new ByteArrayInputStream(img))).block();
-                        } catch (Exception e) {
+                            final byte[] img=bos.toByteArray();
+                            channel.createMessage(mcs-> {
+                                mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
+                                mcs.setEmbed(ecs-> ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW));
+                            }).block();
+                        } catch(Exception e){
                             e.printStackTrace();
                         }
 

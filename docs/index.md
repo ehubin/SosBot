@@ -20,6 +20,7 @@ Provides the list of currently registered participants to next RR event
 ### teams
 * When team composition is finalised allows to display the teams
 * If team composition not finalised this command allows R4 to decide how many teams they want then save the team composition
+
 ### showmap
 displays an image with a map of the game suggesting team placements. Only works when team composition has been saved.
 ### create ![R4](https://via.placeholder.com/15/f03c15/000000?text=+)

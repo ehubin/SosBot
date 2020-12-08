@@ -48,7 +48,7 @@ public class pingBot {
     static HashMap<String,Server> servers= new HashMap<>();
     static HashMap<String,Boolean> channelsCreated= new HashMap<>();
     static BufferedImage rrmap,tmpImage;
-    static final String RRname ="\uD83D\uDCA6reservoir\uFEFFraid\uD83D\uDCA6";
+    static final String RRname ="\uD83D\uDCA6reservoir-raid\uD83D\uDCA6";
 
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");

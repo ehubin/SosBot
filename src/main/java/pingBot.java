@@ -49,6 +49,7 @@ public class pingBot {
     static HashMap<String,Boolean> channelsCreated= new HashMap<>();
     static BufferedImage rrmap,tmpImage;
     static final String RRname ="\uD83D\uDCA6reservoir-raid\uD83D\uDCA6";
+    static final String showdownName="\u2694showdown\u2694";
 
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
@@ -121,7 +122,7 @@ public class pingBot {
                 guild.getChannels().subscribe(c->{
                     //System.out.println(c.getName()+" "+c.getType()+" "+c.getPosition());
                     if(c.getName().equals(RRname)) foundRR.set(true);
-                    else if(c.getName().equals("showdown")) foundSC.set(true);
+                    else if(c.getName().equals(showdownName)) foundSC.set(true);
                     else if(c.getName().equalsIgnoreCase("text channels")) {
                         //System.out.println("found parent");
                         parentId.set(c.getId());
@@ -139,7 +140,7 @@ public class pingBot {
                 if(!foundSC.get()) {
                     System.out.println("Creating showdown channel for "+guild.getName());
                    guild.createTextChannel(c->{
-                        c.setName("showdown");
+                        c.setName(showdownName);
                         c.setTopic("Channel for showdown registration");
                         if(parentId.get() != null) c.setParentId(parentId.get());
                     }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
@@ -163,7 +164,7 @@ public class pingBot {
         }
         final String channelName =channel.getName();
         if(channelName!= null &&
-                (channelName.equals(RRname) || channelName.equals("showdown"))) {
+                (channelName.equals(RRname) || channelName.equals(showdownName))) {
             String user;
             Member m = message.getAuthorAsMember().block();
             if(m==null) {
@@ -511,7 +512,7 @@ public class pingBot {
                         }
                 }
             }   else //noinspection ConstantConditions
-                if(channelName.equalsIgnoreCase("showdown")) {
+                if(channelName.equalsIgnoreCase(showdownName)) {
                     switch (content) {
                         case "help":
                             channel.createMessage(SDhelpStr).block(BLOCK);

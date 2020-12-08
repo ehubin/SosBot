@@ -48,6 +48,7 @@ public class pingBot {
     static HashMap<String,Server> servers= new HashMap<>();
     static HashMap<String,Boolean> channelsCreated= new HashMap<>();
     static BufferedImage rrmap,tmpImage;
+    static final String RRname ="\uD83D\uDCA6reservoir\u2000raid\uD83D\uDCA6";
 
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
@@ -119,7 +120,7 @@ public class pingBot {
                 AtomicReference<Snowflake> parentId=new AtomicReference<>();
                 guild.getChannels().subscribe(c->{
                     //System.out.println(c.getName()+" "+c.getType()+" "+c.getPosition());
-                    if(c.getName().equals("reservoir-raid")) foundRR.set(true);
+                    if(c.getName().equals(RRname)) foundRR.set(true);
                     else if(c.getName().equals("showdown")) foundSC.set(true);
                     else if(c.getName().equalsIgnoreCase("text channels")) {
                         //System.out.println("found parent");
@@ -129,7 +130,7 @@ public class pingBot {
                 if(!foundRR.get()) {
                     System.out.println("Creating reservoir raid channel for "+guild.getName());
                     guild.createTextChannel(c->{
-                        c.setName("reservoir-raid");
+                        c.setName(RRname);
                         c.setTopic("Channel for reservoir raid registration");
                         if(parentId.get() != null) c.setParentId(parentId.get());
                     }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
@@ -162,7 +163,7 @@ public class pingBot {
         }
         final String channelName =channel.getName();
         if(channelName!= null &&
-                (channelName.equals("reservoir-raid") || channelName.equals("showdown"))) {
+                (channelName.equals(RRname) || channelName.equals("showdown"))) {
             String user;
             Member m = message.getAuthorAsMember().block();
             if(m==null) {
@@ -183,7 +184,7 @@ public class pingBot {
             Participant participant = sessions.get(user);
             if(participant==null) { participant=new Participant(user,-1); sessions.put(user,participant);}
             String rawContent = message.getContent(),content=rawContent.trim().toLowerCase();
-            if(channelName.equals("reservoir-raid")) {
+            if(channelName.equals(RRname)) {
                 switch (content) {
                     case "help":
                         channel.createMessage(RRhelpStr).block(BLOCK);

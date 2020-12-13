@@ -183,6 +183,7 @@ public class pingBot {
             //HashMap<String,Participant> sessions=curServer.sessions;
             Participant participant = curServer.sessions.get(m.getId().asLong());
             if(participant==null) {
+                System.out.println("New member "+ m.getDisplayName());
                 participant=curServer.createNewDiscordParticipant(m);
                 if(participant==null) {
                     channel.createMessage("Unexpected error while trying to create new user");

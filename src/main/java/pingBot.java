@@ -560,19 +560,11 @@ public class pingBot {
                         }
                         case "lanes": {
                             if(!curServer.Sd.active) {
-                                channel.createMessage("No ongoing SD event!");
+                                channel.createMessage("No ongoing SD event!").block(BLOCK);
                                 return event;
                             }
-                            System.out.println("lanes");
-                            curServer.getRegisteredSDparticipants().forEach(System.out::println);
-                            System.out.println("-----");
-                            curServer.getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal())
-                                    .thenComparing(p -> p.power).reversed()).forEachOrdered(System.out::println);
                             StringBuilder sb = curServer.getSDLanesString();
-                            System.out.println(">>>"+sb.toString()+"<<<");
-                            channel.createMessage("before");
-                            channel.createMessage(sb.toString());
-                            channel.createMessage("after");
+                            channel.createMessage(sb.toString()).block(BLOCK);
                             return event;
                         }
                         default: {
@@ -615,7 +607,7 @@ public class pingBot {
                                     System.out.println("registering "  + name + "| " + ma.group(2)+" in "+lane+" lane");
                                     Participant p = curServer.createSDParticipant(name,pow,lane);
                                     if(p==null) {
-                                        channel.createMessage("Unexpected error while trying to create participant "+name);
+                                        channel.createMessage("Unexpected error while trying to create participant "+name).block(BLOCK);
                                         return event;
                                     }
                                     channel.createMessage("Successfully registered "+p+" in "+lane+" lane").block(BLOCK);
@@ -854,9 +846,9 @@ public class pingBot {
                     .thenComparing(p -> p.power).reversed()).forEachOrdered(p -> {
                         if(!p.lane.equals(lane.get())) {
                             lane.set(p.lane);
-                            sb.append(p.lane).append("\n");
+                            sb.append("\n>>>").append(p.lane).append("\n");
                         }
-                        sb.append(p.getName()).append("\n");
+                        sb.append(p.getName()).append(" (").append(p.power).append(")\n");
             });
             sb.append("\n```");
             return sb;

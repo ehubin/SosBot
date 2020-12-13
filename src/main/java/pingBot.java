@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 //Command state machine steps
 enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg,teamSave }
@@ -340,7 +341,7 @@ public class pingBot {
                                 channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").block(BLOCK);
                                 return event;
                             case teamSave: {
-                                List<Participant> registered = getRegisteredRRparticipants(curServer);
+                                List<Participant> registered = curServer.getRegisteredRRparticipants();
                                 if(registered.size()==0) {
                                     participant.setStep(Step.begin);
                                     channel.createMessage(" Nobody registered yet!").block(BLOCK);
@@ -501,7 +502,7 @@ public class pingBot {
                                 }
 
 
-                                List<Participant> registered = getRegisteredRRparticipants(curServer);
+                                List<Participant> registered = curServer.getRegisteredRRparticipants();
                                 if(registered.size()==0) {
                                     participant.setStep(Step.begin);
                                     channel.createMessage(" Nobody registered yet!").block(BLOCK);
@@ -549,12 +550,21 @@ public class pingBot {
                         case "register": {
                             if(!curServer.Sd.active) {
                                 channel.createMessage("Showdown event not active right now").block(BLOCK);
+                                return event;
                             }
                             channel.createMessage("Please enter your power in million with one decimal precision (e.g 25.3)").block(BLOCK);
                             participant.setStep(Step.power);
                             return event;
                         }
                         case "lanes": {
+                            if(!curServer.Sd.active) {
+                                channel.createMessage("No ongoing SD event!");
+                                return event;
+                            }
+
+                            StringBuilder sb = curServer.getSDLanesString();
+                            channel.createMessage(sb.toString());
+                            return event;
 
                         }
                         default: {
@@ -598,7 +608,7 @@ public class pingBot {
                                     participant.setStep(Step.begin);
                                     participant.decideSDLane(curServer);
                                     if(participant.saveSD()) {
-                                        channel.createMessage("You are successfully registered to lane "+participant.lane+" .Please go in-game and register in that lane now!").block(BLOCK);
+                                        channel.createMessage("You are successfully registered to **"+participant.lane+"** lane. Please go in-game and register in that lane now!").block(BLOCK);
                                     } else {
                                         channel.createMessage("Unexpected error while updating your data").block(BLOCK);
                                     }
@@ -614,12 +624,7 @@ public class pingBot {
         return event;
     }
 
-    static List<Participant> getRegisteredRRparticipants(Server s) {
-        return s.sessions.values().stream().filter(i -> i.registeredToRR)
-                .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
-                .collect(Collectors.toList());
 
-    }
     static ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered,int[] power) {
         if(registered.size()==0) return null;
         if(registered.size()<nbTeam) nbTeam=registered.size();
@@ -794,6 +799,31 @@ public class pingBot {
 
         public long getId() {
             return guild.getId().asLong();
+        }
+        List<Participant> getRegisteredRRparticipants() {
+            return  sessions.values().stream().filter(i -> i.registeredToRR)
+                    .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
+                    .collect(Collectors.toList());
+
+        }
+        Stream<Participant> getRegisteredSDparticipants() {
+            return  sessions.values().stream().filter(i -> i.lane != SDLane.Undef)
+                    .sorted(Comparator.comparingDouble(Participant::getPower).reversed());
+        }
+
+        StringBuilder getSDLanesString() {
+            final StringBuilder sb=new StringBuilder("```");
+            final AtomicReference<SDLane> lane= new AtomicReference<>(SDLane.Undef);
+            getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal())
+                    .thenComparing(p -> p.power).reversed()).forEachOrdered(p -> {
+                        if(!p.lane.equals(lane.get())) {
+                            lane.set(p.lane);
+                            sb.append("\n").append(p.lane).append("\n");
+                        }
+                        sb.append(p.getName()).append("\n");
+            });
+            sb.append("\n");
+            return sb;
         }
         boolean unregisterRR() {
             try {

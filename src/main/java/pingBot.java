@@ -775,7 +775,7 @@ public class pingBot {
 
     static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants,
             saveTeam, updateRRTeam,updateRRreg,RRunregAll,RRsaveTeam,updateSDLane,SDsave,
-            deleteLocalParticipants,            updateUID,selectParticipants;
+            deleteLocalRRParticipants, deleteLocalSDParticipants,           updateUID,selectParticipants;
     private static void connectToDB() throws  SQLException {
         String dbUrl = System.getenv("JDBC_DATABASE_URL");
         dbConnection = DriverManager.getConnection(dbUrl);
@@ -789,7 +789,8 @@ public class pingBot {
         selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
         selectRRparticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
         updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=? where server=? and name=?");
-        deleteLocalParticipants=  dbConnection.prepareStatement("DELETE  from members set  where server=? and isdiscord='t'");
+        deleteLocalRRParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane='0' and rr='t' ");
+        deleteLocalSDParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane!='0' and rr='f' ");
         updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=?,power=? where uid=?");
         RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=? and name=?");
         SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
@@ -842,7 +843,7 @@ public class pingBot {
         StringBuilder getSDLanesString() {
             final StringBuilder sb=new StringBuilder("```");
             final AtomicReference<SDLane> lane= new AtomicReference<>(SDLane.Undef);
-            getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal())
+            getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal()).reversed()
                     .thenComparing(p -> p.power).reversed()).forEachOrdered(p -> {
                         if(!p.lane.equals(lane.get())) {
                             lane.set(p.lane);
@@ -855,8 +856,8 @@ public class pingBot {
         }
         boolean unregisterRR() {
             try {
-                deleteLocalParticipants.setLong(1,getId());
-                deleteLocalParticipants.executeUpdate();
+                deleteLocalRRParticipants.setLong(1,getId());
+                deleteLocalRRParticipants.executeUpdate();
                 RRunregAll.setLong(1,getId());
                 RRunregAll.executeUpdate();
             }catch(SQLException se) {

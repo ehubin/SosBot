@@ -856,7 +856,7 @@ public class pingBot {
                         }
                         sb.append(p.getName()).append("\n");
             });
-            sb.append("\n");
+            sb.append("\n```");
             return sb;
         }
         boolean unregisterRR() {

@@ -900,7 +900,8 @@ public class pingBot {
         private long generateUID(String n) {
             long ts=System.currentTimeMillis()-offset;
             long str= n.hashCode()%8388593;
-            return ts<<23|str;
+            if(str<0) str=-str;
+            return (ts<<23)|str;
         }
 
         public String toString() { return getName()+"\t"+power;}

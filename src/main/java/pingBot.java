@@ -751,7 +751,7 @@ public class pingBot {
         selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
         selectRRparticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
         updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=? where server=? and name=?");
-        updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=? power=? where uid=?");
+        updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=?,power=? where uid=?");
         RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=? and name=?");
         SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
         updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=?,power=? where server=? and name=?");
@@ -851,7 +851,7 @@ public class pingBot {
                     p.registeredToRR =rs.getBoolean("rr");
                     p.power=rs.getFloat("power");
                     p.RRteamNumber =rs.getInt("team");
-                    p.lane = SDLane.values()[rs.getInt("sdlane")];
+                    p.lane = SDLane.values()[rs.getInt("lane")];
                 }
 
             } catch(SQLException e) {

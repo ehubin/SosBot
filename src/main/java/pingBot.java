@@ -31,6 +31,7 @@ public class pingBot {
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     static final Pattern swapPattern=Pattern.compile("\\s*(\\d).(\\d+)\\s*(\\d).(\\d+)");
     static final Pattern oneFloatPattern=Pattern.compile("\\s*(\\d+.?\\d*)");
+    static final Pattern SDRegPattern=Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)\\s+([lrc])");
     static final String RRhelpStr= "```register             starts registering to event\n" +
                                       "list                 displays list of registered members for next event\n"+
                                       "create               create a new event\n"+
@@ -39,9 +40,10 @@ public class pingBot {
                                       "teams                give a breakdown of participants into teams\n"+
                                       "swap x.y z.t         swaps player y in team x with player t in team z\n"+
                                       "showmap              displays a map of the game suggesting team placements```";
-    static final String SDhelpStr= "```register             starts registering to event\n" +
-                                      "lanes                displays list of registered members for next event sorted by lane\n"+
-                                      "open <power limit>   Open showdown and give power limit between right lane and others```";
+    static final String SDhelpStr= "```register                     starts registering to event\n" +
+                                      "lanes                        displays list of registered members for next event sorted by lane\n"+
+                                      "open <power limit>           Open showdown and give power limit between right lane and others\n"+
+                                      "r4reg <name> <power> <lane>  Register a guy that did skip the bot and registered in-game direct (for R4) lane=l r or c```";
     static Connection dbConnection;
 
     //static String eventDetails="",newEventDetails="";
@@ -260,7 +262,7 @@ public class pingBot {
                     case "teams":
                         if(curServer.RRevent.teamSaved) {
                             participant.setStep(Step.begin);
-                            ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(curServer);
+                            ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
                             channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
                             if(isR4) {
                                 channel.createMessage("You can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3").block(BLOCK);
@@ -276,7 +278,7 @@ public class pingBot {
                             channel.createMessage("Can only display map when teams have been saved.").block(BLOCK);
                             return event;
                         }
-                        ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(curServer);
+                        ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
                         Graphics2D g2d=tmpImage.createGraphics();
                         String[] leaders= new String[teams.size()];
                         int i=0;
@@ -391,7 +393,7 @@ public class pingBot {
                             if(ma.find()) {
                                 float pow=Float.parseFloat(ma.group(2));
                                 System.out.println("registering "  + ma.group(1) + "| " + ma.group(2));
-                                Participant p = curServer.createNewParticipant(ma.group(1),pow,true);
+                                Participant p = curServer.createRRParticipant(ma.group(1),pow,true);
                                 if(p==null) {
                                     channel.createMessage("Unexpected error while trying to create participant "+ma.group(1));
                                     return event;
@@ -421,7 +423,7 @@ public class pingBot {
                                 int fromPlayer=Integer.parseInt(ma.group(2));
                                 int toTeam=Integer.parseInt(ma.group(3));
                                 int toPlayer=Integer.parseInt(ma.group(4));
-                                ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(curServer);
+                                ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
                                 int teamNb = teams.size();
                                 if(fromTeam<=0 || fromTeam>teamNb) {
                                     channel.createMessage("Invalid team number "+fromTeam).block(BLOCK);
@@ -444,7 +446,7 @@ public class pingBot {
 
                                 channel.createMessage("Swapping "+from.getName()+" and "+to.getName()).block(BLOCK);
                                 from.swap(to);
-                                teams = getRRSavedTeams(curServer);
+                                teams = curServer.getRRSavedTeams();
                                 channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
                             } else {
                                 channel.createMessage("syntax is swap x.y z.t").block(BLOCK);
@@ -588,6 +590,33 @@ public class pingBot {
                                     channel.createMessage("syntax is open <power threshold>").block(BLOCK);
                                 }
                                 return event;
+                            } else if(content.startsWith("r4reg ")) {
+                                if(!isR4) {
+                                    channel.createMessage("only R4 can use r4reg command").block(BLOCK);
+                                    return event;
+                                }
+                                Matcher ma=SDRegPattern.matcher(rawContent.substring(6));
+                                if(ma.find()) {
+                                    float pow=Float.parseFloat(ma.group(2));
+                                    String name=ma.group(1).trim();
+                                    SDLane lane;
+                                    switch(ma.group(3)) {
+                                        case "l": lane=SDLane.Left;break;
+                                        case "r":lane=SDLane.Right;break;
+                                        case "c": lane=SDLane.Center;break;
+                                        default:lane=SDLane.Undef;
+                                    }
+                                    System.out.println("registering "  + name + "| " + ma.group(2)+" in "+lane+" lane");
+                                    Participant p = curServer.createSDParticipant(name,pow,lane);
+                                    if(p==null) {
+                                        channel.createMessage("Unexpected error while trying to create participant "+name);
+                                        return event;
+                                    }
+                                    channel.createMessage("Successfully registered "+p).block(BLOCK);
+                                } else {
+                                    channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
+                                }
+                                return event;
                             } else if(participant.step==Step.power) {
                                 if (participant.timedOut()) {
                                     participant.setStep(Step.begin);
@@ -646,19 +675,6 @@ public class pingBot {
         teams.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
                 Float.compare(t2.get(0).power, t1.get(0).power));
         return teams;
-    }
-    static ArrayList<ArrayList<Participant>> getRRSavedTeams(Server s) {
-        List<Participant>list=s.sessions.values().stream().filter(i -> i.registeredToRR)
-                .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
-                .collect(Collectors.toList());
-        ArrayList<ArrayList<Participant>> res = new ArrayList<>();
-        for(Participant p:list) {
-            while(res.size()<p.RRteamNumber) res.add(new ArrayList<>());
-            res.get(p.RRteamNumber -1).add(p);
-        }
-        res.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
-                Float.compare(t2.get(0).power, t1.get(0).power));
-        return res;
     }
     static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {
         StringBuilder sb = new StringBuilder();
@@ -811,6 +827,20 @@ public class pingBot {
                     .sorted(Comparator.comparingDouble(Participant::getPower).reversed());
         }
 
+        ArrayList<ArrayList<Participant>> getRRSavedTeams() {
+            List<Participant>list=sessions.values().stream().filter(i -> i.registeredToRR)
+                    .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
+                    .collect(Collectors.toList());
+            ArrayList<ArrayList<Participant>> res = new ArrayList<>();
+            for(Participant p:list) {
+                while(res.size()<p.RRteamNumber) res.add(new ArrayList<>());
+                res.get(p.RRteamNumber -1).add(p);
+            }
+            res.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
+                    Float.compare(t2.get(0).power, t1.get(0).power));
+            return res;
+        }
+
         StringBuilder getSDLanesString() {
             final StringBuilder sb=new StringBuilder("```");
             final AtomicReference<SDLane> lane= new AtomicReference<>(SDLane.Undef);
@@ -847,7 +877,7 @@ public class pingBot {
             return null;
         }
         @SuppressWarnings("SameParameterValue")
-        Participant createNewParticipant(String name, float power, boolean rr) {
+        Participant createRRParticipant(String name, float power, boolean rr) {
             Participant newby = new Participant(name,guild);
             newby.setRRregistered(rr);
             newby.power=power;
@@ -909,6 +939,17 @@ public class pingBot {
             } catch(SQLException e) {
                 e.printStackTrace();
             }
+        }
+
+        public Participant createSDParticipant(String name, float pow, SDLane lane) {
+            Participant newbie = new Participant(name,guild);
+            newbie.lane=lane;
+            newbie.power=pow;
+            if(newbie.save()) {
+                sessions.put(newbie.uid,newbie);
+                return newbie;
+            }
+            return null;
         }
     }
 

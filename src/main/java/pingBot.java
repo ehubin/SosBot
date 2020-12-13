@@ -563,7 +563,8 @@ public class pingBot {
                                 channel.createMessage("No ongoing SD event!");
                                 return event;
                             }
-
+                            System.out.println("lanes");
+                            curServer.getRegisteredSDparticipants().forEach(System.out::println);
                             StringBuilder sb = curServer.getSDLanesString();
                             channel.createMessage(sb.toString());
                             return event;
@@ -612,7 +613,7 @@ public class pingBot {
                                         channel.createMessage("Unexpected error while trying to create participant "+name);
                                         return event;
                                     }
-                                    channel.createMessage("Successfully registered "+p).block(BLOCK);
+                                    channel.createMessage("Successfully registered "+p+" in "+lane+" lane").block(BLOCK);
                                 } else {
                                     channel.createMessage("syntax is r4reg <name> <power>").block(BLOCK);
                                 }
@@ -954,7 +955,7 @@ public class pingBot {
     }
 
 
-    enum SDLane { Undef,Left,Right,Center}
+    enum SDLane { Undef,Left,Center,Right}
 
     static class Participant {
         //String name;

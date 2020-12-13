@@ -752,9 +752,9 @@ public class pingBot {
         updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=? where server=? and name=?");
         updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=? power=? where uid=?");
         RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=? and name=?");
-        SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=? sdthreshold=? where server=?");
-        updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=? power=? where server=? and name=?");
-        RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f' team='-1' where server=?");
+        SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
+        updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=?,power=? where server=? and name=?");
+        RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
 
         updateUID =  dbConnection.prepareStatement("UPDATE  members set uid=? where server=? and name=?");
         selectParticipants = dbConnection.prepareStatement("SELECT * FROM members");

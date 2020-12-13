@@ -930,6 +930,7 @@ public class pingBot {
                 updateRRreg.setBoolean(1,b);
                 updateRRreg.setFloat(2,power);
                 updateRRreg.setLong(3,getUid());
+                updateRRreg.executeUpdate();
             }catch(SQLException se) {
                 se.printStackTrace();
             }

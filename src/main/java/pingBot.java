@@ -29,6 +29,7 @@ enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, clos
 public class pingBot {
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     static final Pattern swapPattern=Pattern.compile("\\s*(\\d).(\\d+)\\s*(\\d).(\\d+)");
+    static final Pattern oneFloatPattern=Pattern.compile("\\s*(\\d+.?\\d*)");
     static final String RRhelpStr= "```register             starts registering to event\n" +
                                       "list                 displays list of registered members for next event\n"+
                                       "create               create a new event\n"+
@@ -463,7 +464,7 @@ public class pingBot {
                                     channel.createMessage("incorrect number format " + content).block(BLOCK);
                                     return event;
                                 }
-                                if (pow < 0.1 || pow > 300.) {
+                                if (pow < 0.1 || pow > 1000.) {
                                     channel.createMessage("incorrect power value " + content).block(BLOCK);
                                 } else {
                                     participant.power = pow;
@@ -556,11 +557,28 @@ public class pingBot {
                         case "lanes": {
 
                         }
-                        case "create" : {
-
-                        }
                         default: {
-                            if(participant.step==Step.power) {
+                            if(content.startsWith("open ")) {
+                                if(!isR4) {
+                                    channel.createMessage("only R4 can use open command").block(BLOCK);
+                                    return event;
+                                }
+                                Matcher ma=oneFloatPattern.matcher(rawContent.substring(4));
+                                if(ma.find()) {
+                                    float pow=Float.parseFloat(ma.group(1));
+                                    System.out.println("opening showdown with power threshold "  + pow);
+                                    curServer.Sd.active=true;
+                                    curServer.Sd.threshold=pow;
+                                    if(curServer.Sd.save()) {
+                                        channel.createMessage("Succesfully opened Showdown with power threshold at " + pow).block(BLOCK);
+                                    } else {
+                                        channel.createMessage("Unexpected error while trying to open showdown").block(BLOCK);
+                                    }
+                                } else {
+                                    channel.createMessage("syntax is open <power threshold>").block(BLOCK);
+                                }
+                                return event;
+                            } else if(participant.step==Step.power) {
                                 if (participant.timedOut()) {
                                     participant.setStep(Step.begin);
                                     channel.createMessage(user + "registration timed out!").block(BLOCK);
@@ -573,7 +591,7 @@ public class pingBot {
                                     channel.createMessage("incorrect number format " + content).block(BLOCK);
                                     return event;
                                 }
-                                if (pow < 0.1 || pow > 300.) {
+                                if (pow < 0.1 || pow > 1000.) {
                                     channel.createMessage("incorrect power value " + content).block(BLOCK);
                                 } else {
                                     participant.power = pow;

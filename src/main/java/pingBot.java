@@ -569,9 +569,9 @@ public class pingBot {
                             curServer.getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal())
                                     .thenComparing(p -> p.power).reversed()).forEachOrdered(System.out::println);
                             StringBuilder sb = curServer.getSDLanesString();
+                            System.out.println(">>>"+sb.toString()+"<<<");
                             channel.createMessage(sb.toString());
                             return event;
-
                         }
                         default: {
                             if(content.startsWith("open ")) {

@@ -570,7 +570,9 @@ public class pingBot {
                                     .thenComparing(p -> p.power).reversed()).forEachOrdered(System.out::println);
                             StringBuilder sb = curServer.getSDLanesString();
                             System.out.println(">>>"+sb.toString()+"<<<");
+                            channel.createMessage("before");
                             channel.createMessage(sb.toString());
+                            channel.createMessage("after");
                             return event;
                         }
                         default: {
@@ -852,7 +854,7 @@ public class pingBot {
                     .thenComparing(p -> p.power).reversed()).forEachOrdered(p -> {
                         if(!p.lane.equals(lane.get())) {
                             lane.set(p.lane);
-                            sb.append("\n").append(p.lane).append("\n");
+                            sb.append(p.lane).append("\n");
                         }
                         sb.append(p.getName()).append("\n");
             });

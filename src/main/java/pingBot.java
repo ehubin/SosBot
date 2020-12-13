@@ -565,6 +565,9 @@ public class pingBot {
                             }
                             System.out.println("lanes");
                             curServer.getRegisteredSDparticipants().forEach(System.out::println);
+                            System.out.println("-----");
+                            curServer.getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal())
+                                    .thenComparing(p -> p.power).reversed()).forEachOrdered(System.out::println);
                             StringBuilder sb = curServer.getSDLanesString();
                             channel.createMessage(sb.toString());
                             return event;

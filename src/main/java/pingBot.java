@@ -15,6 +15,7 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.sql.*;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,7 +27,6 @@ import java.util.stream.Collectors;
 //Command state machine steps
 enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg,teamSave }
 public class pingBot {
-    static final  String DbFile="DBfile.txt";
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     static final Pattern swapPattern=Pattern.compile("\\s*(\\d).(\\d+)\\s*(\\d).(\\d+)");
     static final String RRhelpStr= "```register             starts registering to event\n" +
@@ -41,8 +41,7 @@ public class pingBot {
                                       "lanes       displays list of registered members for next event\n"+
                                       "create      create a new event```";
     static Connection dbConnection;
-    static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants,
-            saveTeam,updateTeam,RRsaveTeam;
+
     //static String eventDetails="",newEventDetails="";
     static final Duration BLOCK=Duration.ofSeconds(3);
     static HashMap<String,Server> servers= new HashMap<>();
@@ -54,7 +53,7 @@ public class pingBot {
     public static void main(final String[] args) {
         final String token = System.getenv("TOKEN");
         final DiscordClient client = DiscordClient.create(token);
-        final GatewayDiscordClient gateway = client.login().block();
+        final GatewayDiscordClient gateway = client.login().block(BLOCK);
 
 
         if(gateway==null) {
@@ -81,12 +80,12 @@ public class pingBot {
             try {
                 error.printStackTrace();
                 final Message message = ((MessageCreateEvent) event).getMessage();
-                final TextChannel channel = ((TextChannel) message.getChannel().block());
+                final TextChannel channel = ((TextChannel) message.getChannel().block(BLOCK));
                 if (channel == null) {
                     System.err.println("Error fetching channel info");
                     return;
                 }
-                channel.createMessage("Unexpected error...").block();
+                channel.createMessage("Unexpected error...").block(BLOCK);
             }
             catch(Error e) {
                 System.err.println("Double error!!");
@@ -98,12 +97,12 @@ public class pingBot {
 
     static MessageCreateEvent processMessage( MessageCreateEvent event) {
         final Message message = event.getMessage();
-        final TextChannel channel = ((TextChannel)message.getChannel().block());
+        final TextChannel channel = ((TextChannel)message.getChannel().block(BLOCK));
         if(channel == null) {
             System.err.println("Error fetching channel info");
             return event;
         }
-        Guild guild=event.getGuild().block();
+        Guild guild=event.getGuild().block(BLOCK);
         Server curServer;
         if(guild==null) {
             System.err.println("Error fetching server info");
@@ -113,7 +112,7 @@ public class pingBot {
             if(curServer==null) {
                 curServer= new Server(guild);
                 servers.put(guild.getId().asString(),curServer);
-                initFromDB(curServer);
+                curServer.initFromDB();
             }
             if(channelsCreated.get(guild.getName())==null) {
                 AtomicBoolean foundRR = new AtomicBoolean(false);
@@ -166,7 +165,7 @@ public class pingBot {
         if(channelName!= null &&
                 (channelName.equals(RRname) || channelName.equals(showdownName))) {
             String user;
-            Member m = message.getAuthorAsMember().block();
+            Member m = message.getAuthorAsMember().block(BLOCK);
             if(m==null) {
                 System.err.println("Error fetching member info");
                 return event;
@@ -177,13 +176,19 @@ public class pingBot {
                 if(r.getName().equals("R4")) foundR4[0]=true;
             });
             boolean isR4 = foundR4[0];
-            user = m.getNickname().orElseGet(() -> message.getUserData().username());
+            user = m.getDisplayName();
             // don't process bot messages and log user messages
             if(user.equals("SosBot")) return event;
             else System.out.println("==>" + message.getContent() + ", " + user);
-            HashMap<String,Participant> sessions=curServer.sessions;
-            Participant participant = sessions.get(user);
-            if(participant==null) { participant=new Participant(user,-1); sessions.put(user,participant);}
+            //HashMap<String,Participant> sessions=curServer.sessions;
+            Participant participant = curServer.sessions.get(m.getId().asLong());
+            if(participant==null) {
+                participant=curServer.createNewDiscordParticipant(m);
+                if(participant==null) {
+                    channel.createMessage("Unexpected error while trying to create new user");
+                    return event;
+                }
+            }
             String rawContent = message.getContent(),content=rawContent.trim().toLowerCase();
             if(channelName.equals(RRname)) {
                 switch (content) {
@@ -192,8 +197,8 @@ public class pingBot {
                         participant.setStep(Step.begin);
                         return event;
                     case "list": {
-                        List<Participant> registered = sessions.values().stream()
-                                .filter(i -> i.registered)
+                        List<Participant> registered = curServer.sessions.values().stream()
+                                .filter(i -> i.registeredToRR)
                                 .sorted(Comparator.comparingDouble(Participant::getPower))
                                 .collect(Collectors.toList());
                         if (registered.size() == 0) {
@@ -202,9 +207,9 @@ public class pingBot {
                             return event;
                         }
                         StringBuilder sb = new StringBuilder("Registered so far for ").append(curServer.RRevent).append("\n```");
-                        int max = registered.stream().map(p -> p.name.length()).max(Integer::compareTo).get();
+                        int max = registered.stream().map(p -> p.getName().length()).max(Integer::compareTo).get();
                         for (Participant p : registered) {
-                            sb.append(p.name).append(" ".repeat(max + 5 - p.name.length())).append(p.power).append("\n");
+                            sb.append(p.getName()).append(" ".repeat(max + 5 - p.getName().length())).append(p.power).append("\n");
                         }
                         sb.append("```");
                         participant.setStep(Step.begin);
@@ -212,7 +217,7 @@ public class pingBot {
                         return event;
                     }
                     case "register":
-                        if (participant.registered) {
+                        if (participant.registeredToRR) {
                             channel.createMessage(user + " you are already registered!").block(BLOCK);
                         } else if(!curServer.RRevent.active) {
                             channel.createMessage(user + "RR event now closed to registrations!").block(BLOCK);
@@ -223,7 +228,7 @@ public class pingBot {
                         }
                         return event;
                     case "cancel":
-                        if (participant.registered) {
+                        if (participant.registeredToRR) {
                             participant.setStep(Step.cancel);
                             channel.createMessage(user + " Do you really want to cancel your registration for " + curServer.RRevent + " (yes/no)").block(BLOCK);
                         } else {
@@ -252,7 +257,7 @@ public class pingBot {
                     case "teams":
                         if(curServer.RRevent.teamSaved) {
                             participant.setStep(Step.begin);
-                            ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                            ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(curServer);
                             channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
                             if(isR4) {
                                 channel.createMessage("You can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3").block(BLOCK);
@@ -268,11 +273,11 @@ public class pingBot {
                             channel.createMessage("Can only display map when teams have been saved.").block(BLOCK);
                             return event;
                         }
-                        ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                        ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(curServer);
                         Graphics2D g2d=tmpImage.createGraphics();
                         String[] leaders= new String[teams.size()];
                         int i=0;
-                        for(ArrayList<Participant> t:teams) { leaders[i++]= t.get(0).name;}
+                        for(ArrayList<Participant> t:teams) { leaders[i++]= t.get(0).getName();}
                         g2d.drawImage(rrmap,0,0,null);
                         RRmapTeam.drawTeams(g2d,leaders);
                         try {
@@ -282,7 +287,7 @@ public class pingBot {
                             channel.createMessage(mcs-> {
                                 mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
                                 mcs.setEmbed(ecs-> ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW));
-                            }).block();
+                            }).block(BLOCK);
                         } catch(Exception e){
                             e.printStackTrace();
                         }
@@ -305,9 +310,12 @@ public class pingBot {
                                     channel.createMessage(user + " cancellation timed out!").block(BLOCK);
                                     return event;
                                 }
-                                participant.registered = false;
+
                                 participant.setStep(Step.begin);
-                                deleteFromDB(participant,guild);
+                                if(!participant.setRRregistered(false)) {
+                                    channel.createMessage("Unexpected error while trying to cancel your RR registration").block(BLOCK);
+                                    return event;
+                                }
                                 channel.createMessage(user + " your registration has been cancelled!").block(BLOCK);
                                 return event;
                             case confirmCreate:
@@ -317,15 +325,20 @@ public class pingBot {
                                     return event;
                                 }
                                 participant.setStep(Step.begin);
-
+                                if(!curServer.newRRevent.save()) {
+                                    channel.createMessage("Failure while saving RR event").block(BLOCK);
+                                    return event;
+                                }
                                 curServer.RRevent = curServer.newRRevent;
                                 curServer.newRRevent = new RREvent(guild);
-                                sessions.clear();
-                                inserRRevent(curServer.RRevent);
+                                if(!curServer.unregisterRR()) {
+                                    channel.createMessage("Unexpected error while updating participant status").block(BLOCK);
+                                    return event;
+                                }
                                 channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").block(BLOCK);
                                 return event;
                             case teamSave: {
-                                List<Participant> registered = getRegisteredRRparticipants(sessions);
+                                List<Participant> registered = getRegisteredRRparticipants(curServer);
                                 if(registered.size()==0) {
                                     participant.setStep(Step.begin);
                                     channel.createMessage(" Nobody registered yet!").block(BLOCK);
@@ -333,11 +346,19 @@ public class pingBot {
                                 }
                                 ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered,null);
                                 assert teams != null;
+                                if(!curServer.RRevent.saveTeams(true)) {
+                                    channel.createMessage("unexpected error while trying to save teams");
+                                    return event;
+                                }
                                 for(int i=0;i<teams.size();++i) {
                                     for(Participant p:teams.get(i)) {
-                                        p.updateTeam(i+1,curServer.guild.getId().asLong());
+                                        if(!p.updateRRTeam(i+1)) {
+                                            channel.createMessage("Failure in saving participant team data");
+                                            System.err.println("participant save error for "+p);
+                                            return event;
+                                        }
                                     }
-                                    curServer.RRevent.saveTeams(true);
+
                                 }
                                 return event;
                             }
@@ -350,8 +371,10 @@ public class pingBot {
 
                                 participant.setStep(Step.begin);
                                 // update DB
-                                curServer.RRevent.active = false;
-                                closeRREvent(curServer.RRevent);
+                                if(!curServer.RRevent.close()) {
+                                    channel.createMessage("Event \"" + curServer.RRevent + "\" could not be closed for unexpected reason").block(BLOCK);
+                                    return event;
+                                }
                                 channel.createMessage("Event \"" + curServer.RRevent + "\" now closed for registration! you can still get teams or list of participants").block(BLOCK);
                                 return event;
                         }
@@ -365,10 +388,11 @@ public class pingBot {
                             if(ma.find()) {
                                 float pow=Float.parseFloat(ma.group(2));
                                 System.out.println("registering "  + ma.group(1) + "| " + ma.group(2));
-                                Participant p = new Participant(ma.group(1), pow);
-                                p.registered=true;
-                                sessions.put(ma.group(1),p);
-                                insertParticipant(p,guild);
+                                Participant p = curServer.createNewParticipant(ma.group(1),pow,true);
+                                if(p==null) {
+                                    channel.createMessage("Unexpected error while trying to create participant "+ma.group(1));
+                                    return event;
+                                }
                                 if(curServer.RRevent.teamSaved) {
                                     // unsave the teams as a new participant has been added otherwise he will be in no team
                                     curServer.RRevent.saveTeams(false);
@@ -394,7 +418,7 @@ public class pingBot {
                                 int fromPlayer=Integer.parseInt(ma.group(2));
                                 int toTeam=Integer.parseInt(ma.group(3));
                                 int toPlayer=Integer.parseInt(ma.group(4));
-                                ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(sessions.values());
+                                ArrayList<ArrayList<Participant>> teams = getRRSavedTeams(curServer);
                                 int teamNb = teams.size();
                                 if(fromTeam<=0 || fromTeam>teamNb) {
                                     channel.createMessage("Invalid team number "+fromTeam).block(BLOCK);
@@ -415,9 +439,9 @@ public class pingBot {
                                 Participant from = teams.get(fromTeam-1).get(fromPlayer-1);
                                 Participant to = teams.get(toTeam-1).get(toPlayer-1);
 
-                                channel.createMessage("Swapping "+from.name+" and "+to.name).block(BLOCK);
-                                from.swap(to,guild);
-                                teams = getRRSavedTeams(sessions.values());
+                                channel.createMessage("Swapping "+from.getName()+" and "+to.getName()).block(BLOCK);
+                                from.swap(to);
+                                teams = getRRSavedTeams(curServer);
                                 channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
                             } else {
                                 channel.createMessage("syntax is swap x.y z.t").block(BLOCK);
@@ -443,8 +467,10 @@ public class pingBot {
                                 } else {
                                     participant.power = pow;
                                     participant.setStep(Step.begin);
-                                    participant.registered = true;
-                                    insertParticipant(participant,guild);
+                                    if(!participant.setRRregistered(true)) {
+                                        channel.createMessage("Unexpected error while saving registration data!").block(BLOCK);
+                                        return event;
+                                    }
                                     if(curServer.RRevent.teamSaved) {
                                         // unsave the teams as a new participant has been added otherwise he will be in no team
                                         curServer.RRevent.saveTeams(false);
@@ -473,7 +499,7 @@ public class pingBot {
                                 }
 
 
-                                List<Participant> registered = getRegisteredRRparticipants(sessions);
+                                List<Participant> registered = getRegisteredRRparticipants(curServer);
                                 if(registered.size()==0) {
                                     participant.setStep(Step.begin);
                                     channel.createMessage(" Nobody registered yet!").block(BLOCK);
@@ -519,11 +545,17 @@ public class pingBot {
                             participant.setStep(Step.begin);
                             return event;
                         case "register": {
+                            if(!curServer.Sd.active) {
+                                channel.createMessage("Showdown event not active right now").block(BLOCK);
+                            }
                             channel.createMessage("Please enter your power in million with one decimal precision (e.g 25.3)").block(BLOCK);
                             participant.setStep(Step.power);
                             return event;
                         }
                         case "lanes": {
+
+                        }
+                        case "create" : {
 
                         }
                         default: {
@@ -545,9 +577,13 @@ public class pingBot {
                                 } else {
                                     participant.power = pow;
                                     participant.setStep(Step.begin);
-                                    //TODO compute lane
-
-                                    //todo save in DB the updated participant data
+                                    participant.decideSDLane(curServer);
+                                    if(participant.saveSD()) {
+                                        channel.createMessage("You are successfully registered to lane "+participant.lane+" .Please go in-game and register in that lane now!").block(BLOCK);
+                                    } else {
+                                        channel.createMessage("Unexpected error while updating your data").block(BLOCK);
+                                    }
+                                    return event;
                                 }
                             } else {
                                 participant.setStep(Step.begin);
@@ -559,8 +595,8 @@ public class pingBot {
         return event;
     }
 
-    static List<Participant> getRegisteredRRparticipants(HashMap<String,Participant> sessions) {
-        return sessions.values().stream().filter(i -> i.registered)
+    static List<Participant> getRegisteredRRparticipants(Server s) {
+        return s.sessions.values().stream().filter(i -> i.registeredToRR)
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
                 .collect(Collectors.toList());
 
@@ -587,14 +623,14 @@ public class pingBot {
                 Float.compare(t2.get(0).power, t1.get(0).power));
         return teams;
     }
-    static ArrayList<ArrayList<Participant>> getRRSavedTeams(Collection<Participant> all) {
-        List<Participant>list=all.stream().filter(i -> i.registered)
+    static ArrayList<ArrayList<Participant>> getRRSavedTeams(Server s) {
+        List<Participant>list=s.sessions.values().stream().filter(i -> i.registeredToRR)
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
                 .collect(Collectors.toList());
         ArrayList<ArrayList<Participant>> res = new ArrayList<>();
         for(Participant p:list) {
-            while(res.size()<p.teamNumber) res.add(new ArrayList<>());
-            res.get(p.teamNumber-1).add(p);
+            while(res.size()<p.RRteamNumber) res.add(new ArrayList<>());
+            res.get(p.RRteamNumber -1).add(p);
         }
         res.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
                 Float.compare(t2.get(0).power, t1.get(0).power));
@@ -612,7 +648,7 @@ public class pingBot {
             sb.append("Team ").append(i + 1).append(" (").append(power[i]).append(")\n");
             int j=0;
             for (Participant p : teams.get(i)) {
-                sb.append(++j).append(". ").append(p.name).append(" (").append(p.power).append(")\n");
+                sb.append(++j).append(". ").append(p.getName()).append(" (").append(p.power).append(")\n");
             }
             sb.append("\n");
         }
@@ -620,43 +656,32 @@ public class pingBot {
         return sb;
     }
 
-    @SuppressWarnings("unused")
-    static String padStr(String s, int l) {
-        return s.length() < l ? s+" ".repeat(l-s.length()) : s.substring(0,l);
-    }
 
-    @SuppressWarnings("unused")
-    static void initFromFile(HashMap<String,Participant> sessions) {
-        try{
-            BufferedReader reader= new BufferedReader(new FileReader(DbFile));
-            String line = reader.readLine();
-            while(line != null) {
-                Matcher m=registerPattern.matcher(line);
-                if(m.find()) {
 
-                    float pow=Float.parseFloat(m.group(2));
-                    if(!sessions.containsKey(m.group(1))) {
-                        System.out.println("restoring >" + line + "|" + m.group(1) + "|" + m.group(2));
-                        sessions.put(m.group(1),new Participant(m.group(1), pow));
-                    }
-                }
-                line = reader.readLine();
+    static class SDEvent {
+        boolean active=true;
+        LocalDateTime start;
+        float threshold;
+        Guild guild;
+        SDEvent(Guild g) {
+            guild=g;
+            start=LocalDateTime.now();
+        }
+        boolean save() {
+            try{
+                SDsave.setBoolean(1, active);
+                SDsave.setFloat(2,threshold );
+                SDsave.setLong( 3,guild.getId().asLong());
+                SDsave.executeUpdate();
+            } catch(SQLException e) {
+                e.printStackTrace();
+                return false;
             }
-            reader.close();
-        } catch(Exception e) {
-           e.printStackTrace();
+            return true;
         }
+
     }
-    static void insertParticipant(Participant p,Guild g) {
-        try {
-            insertP.setString(1, p.name);
-            insertP.setFloat(2, p.power);
-            insertP.setLong(3,g.getId().asLong());
-            insertP.executeUpdate();
-        } catch(SQLException e) {
-            e.printStackTrace();
-        }
-    }
+
     static class RREvent {
         String name="";
         boolean active=true;
@@ -667,7 +692,6 @@ public class pingBot {
         public String toString() { return name+(active?"":"*");}
         boolean saveTeams(boolean saved) {
             try {
-                teamSaved=saved;
                 RRsaveTeam.setBoolean(1,saved);
                 RRsaveTeam.setLong(2,guild.getId().asLong());
                 RRsaveTeam.setString(3,name);
@@ -676,130 +700,285 @@ public class pingBot {
                 se.printStackTrace();
                 return false;
             }
+            teamSaved=saved;
+            return true;
+        }
+        boolean save() {
+            try {
+                deleteE.setLong(1, guild.getId().asLong());
+                deleteE.executeUpdate();
+                insertE.setString(1, name);
+                insertE.setBoolean(2, active);
+                insertE.setLong(3, guild.getId().asLong());
+                insertE.setBoolean(4, teamSaved);
+                insertE.executeUpdate();
+                deleteP.setLong(1, guild.getId().asLong());
+                deleteP.executeUpdate();
+            } catch(SQLException ex) {
+                ex.printStackTrace();
+                return false;
+            }
+            return true;
+        }
+        boolean close() {
+            try {
+                closeE.setString(1, name);
+                closeE.setLong(2, guild.getId().asLong());
+                closeE.executeUpdate();
+            } catch(SQLException ex) {
+                ex.printStackTrace();
+                return false;
+            }
+            active=false;
             return true;
         }
     }
-    static void inserRRevent(RREvent e) {
-        try {
-            deleteE.setLong(1, e.guild.getId().asLong());
-            deleteE.executeUpdate();
-            insertE.setString(1, e.name);
-            insertE.setBoolean(2, e.active);
-            insertE.setLong(3, e.guild.getId().asLong());
-            insertE.setBoolean(4, e.teamSaved);
-            insertE.executeUpdate();
-            deleteP.setLong(1, e.guild.getId().asLong());
-            deleteP.executeUpdate();
-        } catch(SQLException ex) {
-            ex.printStackTrace();
-        }
-    }
-    static void closeRREvent(RREvent e) {
-        try {
-            closeE.setString(1, e.name);
-            closeE.setLong(2, e.guild.getId().asLong());
-            closeE.executeUpdate();
-        } catch(SQLException ex) {
-            ex.printStackTrace();
-        }
-    }
-    static void initFromDB(Server server) {
-        try {
-            selectRRevent.setLong(1,server.guild.getId().asLong());
-            ResultSet rs = selectRRevent.executeQuery();
-            if(rs.next()) { // read first event
-                RREvent e=new RREvent(server.guild);
-                e.name=rs.getString("name");
-                e.active=rs.getBoolean("active");
-                e.teamSaved=rs.getBoolean("teamsaved");
-                server.RRevent = e;
 
-            } else {
-                server.RRevent=new RREvent(server.guild);
-                // first time event with empty DB is inactive
-                server.RRevent.active=false;
-            }
-            selectRRparticipants.setLong(1,server.guild.getId().asLong());
-            rs=selectRRparticipants.executeQuery();
-            while(rs.next()) {
-                String player=rs.getString("name");
-                float power= rs.getFloat("power");
-                Participant p;
-                if(!server.sessions.containsKey(player)) {
-                    p=new Participant(player, power);
-                    p.registered=true;
-                    p.teamNumber=rs.getInt("team");
-                    server.sessions.put(player, p);
-                }
-            }
 
-        } catch(SQLException e) {
-            e.printStackTrace();
-        }
-    }
-    static void deleteFromDB(Participant p,Guild g) {
-        try {
-           deleteOneP.setString(1,p.name);
-            deleteOneP.setLong(2,g.getId().asLong());
-           deleteOneP.executeUpdate();
-        } catch(SQLException e) {
-            e.printStackTrace();
-        }
-    }
+    static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants,
+            saveTeam, updateRRTeam,updateRRreg,RRunregAll,RRsaveTeam,updateSDLane,SDsave,      updateUID,selectParticipants;
     private static void connectToDB() throws  SQLException {
         String dbUrl = System.getenv("JDBC_DATABASE_URL");
         dbConnection = DriverManager.getConnection(dbUrl);
-        insertP = dbConnection.prepareStatement("INSERT INTO rrparticipants(name,power,server) VALUES(?,?,?)", Statement.RETURN_GENERATED_KEYS);
-        insertE = dbConnection.prepareStatement("INSERT INTO rrevent(name,active,server,teamsaved) VALUES(?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
-        closeE = dbConnection.prepareStatement("UPDATE rrevent set active='0' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
-        saveTeam = dbConnection.prepareStatement("UPDATE rrevent set teamsaved='t' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
-        deleteE = dbConnection.prepareStatement("DELETE from rrevent where server=?", Statement.RETURN_GENERATED_KEYS);
-        deleteP = dbConnection.prepareStatement("delete from rrparticipants where server=?");
-        deleteOneP = dbConnection.prepareStatement("delete from rrparticipants where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
-        selectRRevent = dbConnection.prepareStatement("SELECT name,active,teamsaved FROM rrevent where server=?");
-        selectRRparticipants = dbConnection.prepareStatement("SELECT name,power,team FROM rrparticipants where server=?");
-        updateTeam =  dbConnection.prepareStatement("UPDATE  rrparticipants set team=? where server=? and name=?");
-        RRsaveTeam = dbConnection.prepareStatement("UPDATE  rrevent set teamsaved=? where server=? and name=?");
+        insertP = dbConnection.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+        insertE = dbConnection.prepareStatement("INSERT INTO servers(name,active,server,teamsaved) VALUES(?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+        closeE = dbConnection.prepareStatement("UPDATE servers set active='0' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
+        saveTeam = dbConnection.prepareStatement("UPDATE servers set teamsaved='t' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
+        deleteE = dbConnection.prepareStatement("DELETE from servers where server=?", Statement.RETURN_GENERATED_KEYS);
+        deleteP = dbConnection.prepareStatement("delete from members where server=?");
+        deleteOneP = dbConnection.prepareStatement("delete from members where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
+        selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
+        selectRRparticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
+        updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=? where server=? and name=?");
+        updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=? power=? where uid=?");
+        RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=? and name=?");
+        SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=? sdthreshold=? where server=?");
+        updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=? power=? where server=? and name=?");
+        RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f' team='-1' where server=?");
+
+        updateUID =  dbConnection.prepareStatement("UPDATE  members set uid=? where server=? and name=?");
+        selectParticipants = dbConnection.prepareStatement("SELECT * FROM members");
     }
     static class Server {
         Guild guild;
         RREvent RRevent,newRRevent;
-        HashMap<String,Participant> sessions = new HashMap<>();
+        SDEvent Sd;
+        HashMap<Long,Participant> sessions = new HashMap<>();
 
         public Server(Guild guild) {
             this.guild=guild;
             RRevent= new RREvent(guild);
             newRRevent= new RREvent(guild);
         }
+
+        public long getId() {
+            return guild.getId().asLong();
+        }
+        boolean unregisterRR() {
+            try {
+                RRunregAll.setLong(1,getId());
+                RRunregAll.executeUpdate();
+            }catch(SQLException se) {
+                se.printStackTrace();
+                return false;
+            }
+            return true;
+
+        }
+        Participant createNewDiscordParticipant(Member m) {
+            Participant newby = new Participant(m,guild);
+            if(newby.save()) {
+                sessions.put(newby.uid,newby);
+                return newby;
+            }
+            return null;
+        }
+        @SuppressWarnings("SameParameterValue")
+        Participant createNewParticipant(String name, float power, boolean rr) {
+            Participant newby = new Participant(name,guild);
+            newby.setRRregistered(rr);
+            newby.power=power;
+            if(newby.save()) {
+                sessions.put(newby.uid,newby);
+                return newby;
+            }
+            return null;
+        }
+        void initFromDB() {
+            try {
+                selectRRevent.setLong(1,getId());
+                ResultSet rs = selectRRevent.executeQuery();
+                if(rs.next()) { // read first event
+                    RREvent e=new RREvent(guild);
+                    e.name=rs.getString("name");
+                    e.active=rs.getBoolean("active");
+                    e.teamSaved=rs.getBoolean("teamsaved");
+                    RRevent = e;
+
+                    SDEvent se = new SDEvent(guild);
+                    se.active = rs.getBoolean("sdactive");
+                    se.threshold = rs.getFloat("sdthreshold");
+                    Sd = se;
+
+                } else {
+                    RRevent=new RREvent(guild);
+                    // first time event with empty DB is inactive
+                    RRevent.active=false;
+                    Sd = new SDEvent(guild);
+                    Sd.active=false;
+                }
+                selectRRparticipants.setLong(1,getId());
+                rs=selectRRparticipants.executeQuery();
+                while(rs.next()) {
+                    long uid=rs.getLong("uid");
+                    Participant p=sessions.get(uid);
+                    if(p==null) {
+                        boolean isDiscord=rs.getBoolean("isdiscord");
+                        if(isDiscord) {
+                            Member m=guild.getMemberById(Snowflake.of(uid)).block(BLOCK);
+                            if(m==null) {
+                                System.err.println("Error retrieving member for "+uid);
+                                continue;
+                            }
+                            p=new Participant(m,guild);
+                        } else {
+                            p=new Participant(rs.getString("name"),uid,guild);
+                        }
+                        sessions.put(uid, p);
+
+                    }
+                    p.registeredToRR =rs.getBoolean("rr");
+                    p.power=rs.getFloat("power");
+                    p.RRteamNumber =rs.getInt("team");
+                    p.lane = SDLane.values()[rs.getInt("sdlane")];
+                }
+
+            } catch(SQLException e) {
+                e.printStackTrace();
+            }
+        }
     }
+
+
+    enum SDLane { Undef,Left,Right,Center}
+
     static class Participant {
+        //String name;
+        boolean isDiscord;
+        long uid;
         String name;
-        float power;
-        boolean registered=false;
+        private final Member member;
+        Guild guild;
+        float power=0.0f;
+        boolean registeredToRR =false;
         Step step=Step.begin;
-        long timestamp;
-        int teamNumber=-1;
+        long timestamp=-1L;
+        int RRteamNumber =-1;
+        SDLane lane=SDLane.Undef;
         void setStep(Step s) { step=s; timestamp=System.currentTimeMillis();}
         boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.begin;}
-        Participant(String n,float pow) {name=n;power=pow; }
-        public String toString() { return name+"\t"+power;}
-        public boolean updateTeam(int teamNb,long server) {
-            teamNumber=teamNb;
+        // create a discord-based participant
+        private Participant(Member m,Guild g) {
+            member=m; guild=g;isDiscord=true;
+            name=member.getDisplayName();
+            uid=member.getId().asLong();
+        }
+        //create a non-discord participant from first time
+        private Participant(String n,Guild g) {
+            member=null; guild=g;isDiscord=false;
+            name=n;
+            uid=generateUID(n);
+        }
+        //create a non-discord participant from existing uid
+        private Participant(String n,long uid,Guild g) {
+            member=null; guild=g;isDiscord=false;
+            name=n;
+            this.uid=uid;
+        }
+        static private final long offset=(2020L-1970L)*31536000L*1000L;
+        private long generateUID(String n) {
+            long ts=System.currentTimeMillis()-offset;
+            long str= n.hashCode()%8388593;
+            return ts<<23|str;
+        }
+
+        public String toString() { return getName()+"\t"+power;}
+        public String getName() { return name;}
+        public long getGuildId() { return guild.getId().asLong();}
+        public long getUid() { return uid;}
+
+        boolean save() {
             try {
-                updateTeam.setInt(1, teamNb);
-                updateTeam.setLong(2, server);
-                updateTeam.setString(3, name);
-                updateTeam.executeUpdate();
+                insertP.setString(1, getName());
+                insertP.setFloat(2, power);
+                insertP.setLong(3,getGuildId());
+                insertP.setInt(4,RRteamNumber);
+                insertP.setInt(5,lane.ordinal());
+                insertP.setLong(6,uid);
+                insertP.setBoolean(7,registeredToRR);
+                insertP.setBoolean(8,isDiscord);
+                insertP.executeUpdate();
+            } catch(SQLException e) {
+                e.printStackTrace();
+                return false;
+            }
+            return true;
+        }
+        boolean setRRregistered(boolean b) {
+            try{
+                updateRRreg.setBoolean(1,b);
+                updateRRreg.setFloat(2,power);
+                updateRRreg.setLong(3,getUid());
+            }catch(SQLException se) {
+                se.printStackTrace();
+            }
+            registeredToRR=b;
+            return true;
+        }
+
+        public boolean updateRRTeam(int teamNb) {
+            try {
+                updateRRTeam.setInt(1, teamNb);
+                updateRRTeam.setLong(2, getGuildId());
+                updateRRTeam.setString(3, getName());
+                updateRRTeam.executeUpdate();
+            } catch(SQLException se) {
+                se.printStackTrace();
+                return false;
+            }
+            RRteamNumber =teamNb;
+            return true;
+        }
+        public void swap(Participant o) {
+            int curTeam= RRteamNumber;
+            updateRRTeam(o.RRteamNumber);
+            o.updateRRTeam(curTeam);
+        }
+        void decideSDLane(Server s) {
+            List<Participant> sdguys=s.sessions.values().stream().filter(p->p.lane!=SDLane.Undef).collect(Collectors.toList());
+            if (power < s.Sd.threshold) {
+                lane=SDLane.Right;
+            } else {
+                double left=0.0,center=0.0;
+                for(Participant p:sdguys) {
+                    if(p.lane==SDLane.Left) left+=p.power;
+                    else center+=p.power;
+                }
+                lane = left>center ? SDLane.Center : SDLane.Left;
+            }
+        }
+        boolean saveSD() {
+            try {
+                updateSDLane.setInt(1,lane.ordinal());
+                updateSDLane.setFloat(2,power);
+                updateSDLane.setLong(3,getGuildId());
+                updateSDLane.setString(4,getName());
+                updateSDLane.executeUpdate();
             } catch(SQLException se) {
                 se.printStackTrace();
                 return false;
             }
             return true;
-        }
-        public void swap(Participant o,Guild g) {
-            int curTeam=teamNumber;
-            updateTeam(o.teamNumber,g.getId().asLong());
-            o.updateTeam(curTeam,g.getId().asLong());
         }
 
         public double getPower() { return power;}

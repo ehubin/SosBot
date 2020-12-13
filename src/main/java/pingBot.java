@@ -38,9 +38,9 @@ public class pingBot {
                                       "teams                give a breakdown of participants into teams\n"+
                                       "swap x.y z.t         swaps player y in team x with player t in team z\n"+
                                       "showmap              displays a map of the game suggesting team placements```";
-    static final String SDhelpStr= "```register    starts registering to event\n" +
-                                      "lanes       displays list of registered members for next event\n"+
-                                      "create      create a new event```";
+    static final String SDhelpStr= "```register             starts registering to event\n" +
+                                      "lanes                displays list of registered members for next event sorted by lane\n"+
+                                      "open <power limit>   Open showdown and give power limit between right lane and others```";
     static Connection dbConnection;
 
     //static String eventDetails="",newEventDetails="";

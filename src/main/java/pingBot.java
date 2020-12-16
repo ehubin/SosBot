@@ -86,16 +86,16 @@ public class pingBot {
             try {
                 error.printStackTrace();
                 final Message message = ((MessageCreateEvent) event).getMessage();
-                final TextChannel channel = ((TextChannel) message.getChannel().block(BLOCK));
+                final MessageChannel channel = message.getChannel().block(BLOCK);
                 if (channel == null) {
                     System.err.println("Error fetching channel info");
                     return;
                 }
                 channel.createMessage("Unexpected error...").block(BLOCK);
             }
-            catch(Error e) {
+            catch(Throwable t) {
                 System.err.println("Double error!!");
-                e.printStackTrace();
+                t.printStackTrace();
             }
         }).subscribe();
         gateway.onDisconnect().block();

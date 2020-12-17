@@ -280,8 +280,12 @@ public class pingBot {
                                 return event;
                             }
                         } else {
-                            participant.setStep(Step.teamsNb);
-                            channel.createMessage("How many teams do you want?").block(BLOCK);
+                            if(isR4) {
+                                participant.setStep(Step.teamsNb);
+                                channel.createMessage("How many teams do you want?").block(BLOCK);
+                            } else {
+                                channel.createMessage("Registration still ongoing. Team composition not finalised yet.").block(BLOCK);
+                            }
                         }
                         return event;
                     case "showmap": {
@@ -608,12 +612,12 @@ public class pingBot {
                                 if(ma.find()) {
                                     float pow=Float.parseFloat(ma.group(2));
                                     String name=ma.group(1).trim();
-                                    SDLane lane;
+                                    SDPos lane;
                                     switch(ma.group(3)) {
-                                        case "l": lane=SDLane.Left;break;
-                                        case "r":lane=SDLane.Right;break;
-                                        case "c": lane=SDLane.Center;break;
-                                        default:lane=SDLane.Undef;
+                                        case "l": lane=SDPos.Left;break;
+                                        case "r":lane=SDPos.Right;break;
+                                        case "c": lane=SDPos.Center;break;
+                                        default:lane=SDPos.Undef;
                                     }
                                     System.out.println("registering "  + name + "| " + ma.group(2)+" in "+lane+" lane");
                                     Participant p = curServer.createSDParticipant(name,pow,lane);
@@ -833,7 +837,7 @@ public class pingBot {
 
         }
         Stream<Participant> getRegisteredSDparticipants() {
-            return  sessions.values().stream().filter(i -> i.lane != SDLane.Undef)
+            return  sessions.values().stream().filter(i -> i.lane != SDPos.Undef)
                     .sorted(Comparator.comparingDouble(Participant::getPower).reversed());
         }
 
@@ -853,7 +857,7 @@ public class pingBot {
 
         StringBuilder getSDLanesString() {
             final StringBuilder sb=new StringBuilder("```");
-            final AtomicReference<SDLane> lane= new AtomicReference<>(SDLane.Undef);
+            final AtomicReference<SDPos> lane= new AtomicReference<>(SDPos.Undef);
             getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal()).reversed()
                     .thenComparing(p -> p.power).reversed()).forEachOrdered(p -> {
                         if(!p.lane.equals(lane.get())) {
@@ -943,7 +947,7 @@ public class pingBot {
                     p.registeredToRR =rs.getBoolean("rr");
                     p.power=rs.getFloat("power");
                     p.RRteamNumber =rs.getInt("team");
-                    p.lane = SDLane.values()[rs.getInt("lane")];
+                    p.lane = SDPos.values()[rs.getInt("lane")];
                 }
 
             } catch(SQLException e) {
@@ -951,7 +955,7 @@ public class pingBot {
             }
         }
 
-        public Participant createSDParticipant(String name, float pow, SDLane lane) {
+        public Participant createSDParticipant(String name, float pow, SDPos lane) {
             Participant newbie = new Participant(name,guild);
             newbie.lane=lane;
             newbie.power=pow;
@@ -964,8 +968,15 @@ public class pingBot {
     }
 
 
-    enum SDLane { Undef,Left,Center,Right}
+    enum SDPos { Undef,Left,Center,Right}
 
+    class SDLane {
+        int nbPlayers;
+        int totalPower;
+        int powerEstimate() {
+            return -1;
+        }
+    }
     static class Participant {
         //String name;
         boolean isDiscord;
@@ -978,7 +989,7 @@ public class pingBot {
         Step step=Step.begin;
         long timestamp=-1L;
         int RRteamNumber =-1;
-        SDLane lane=SDLane.Undef;
+        SDPos lane=SDPos.Undef;
         void setStep(Step s) { step=s; timestamp=System.currentTimeMillis();}
         boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.begin;}
         // create a discord-based participant
@@ -1061,16 +1072,16 @@ public class pingBot {
             o.updateRRTeam(curTeam);
         }
         void decideSDLane(Server s) {
-            List<Participant> sdguys=s.sessions.values().stream().filter(p->p.lane!=SDLane.Undef).collect(Collectors.toList());
+            List<Participant> sdguys=s.sessions.values().stream().filter(p->p.lane!=SDPos.Undef).collect(Collectors.toList());
             if (power < s.Sd.threshold) {
-                lane=SDLane.Right;
+                lane=SDPos.Right;
             } else {
                 double left=0.0,center=0.0;
                 for(Participant p:sdguys) {
-                    if(p.lane==SDLane.Left) left+=p.power;
+                    if(p.lane==SDPos.Left) left+=p.power;
                     else center+=p.power;
                 }
-                lane = left>center ? SDLane.Center : SDLane.Left;
+                lane = left>center ? SDPos.Center : SDPos.Left;
             }
         }
         boolean saveSD() {

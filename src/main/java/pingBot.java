@@ -932,7 +932,7 @@ public class pingBot {
                     if(p==null) {
                         boolean isDiscord=rs.getBoolean("isdiscord");
                         if(isDiscord) {
-                            Member m=guild.getMemberById(Snowflake.of(uid)).block(BLOCK);
+                            Member m=guild.getMemberById(Snowflake.of(uid)).onErrorContinue((t,e)-> t.printStackTrace()).block(BLOCK);
                             if(m==null) {
                                 System.err.println("Error retrieving member for "+uid);
                                 continue;
@@ -970,7 +970,7 @@ public class pingBot {
 
     enum SDPos { Undef,Left,Center,Right}
 
-    class SDLane {
+    static class SDLane {
         int nbPlayers;
         int totalPower;
         int powerEstimate() {

@@ -342,14 +342,13 @@ public class pingBot {
                             e.printStackTrace();
                             return event;
                         }
+                        StringBuilder sb=new StringBuilder();
                         for(ArrayList<Participant> t:teams) {
-                            StringBuilder sb=new StringBuilder();
-
                             for(Participant p:t) {
                                 if(p.isDiscord && p.member!= null) {
+                                    sb.setLength(0);
                                     for(Participant pa:t) {
                                         if (p != pa) {
-                                            sb.setLength(0);
                                             sb.append(" - ").append(pa.getName()).append(" (").append(pa.power).append(")\n");
                                         }
                                     }

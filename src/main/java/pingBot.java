@@ -373,7 +373,10 @@ public class pingBot {
                                             ecs.addField("Your attendance to the event is important! We cannot cancel your registration anymore. We count on you!","\u200b",false);
                                             ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW);
                                         });
-                                    }).block(BLOCK);
+                                    }).onErrorContinue((thr,e)->{
+                                        thr.printStackTrace();
+                                        System.err.println("Error while sending message to "+p.getName());
+                                    }).doOnSuccess(msg-> System.out.println("Sent to "+p.getName())).block(BLOCK);
                                 }
                             }
                         }

@@ -43,7 +43,7 @@ public class pingBot {
                                       "teams                give a breakdown of participants into teams\n"+
                                       "swap x.y z.t         swaps player y in team x with player t in team z\n"+
                                       "showmap              displays a map of the game suggesting team placements\n"+
-                                      "notify               R4 can use this command to send everyone info their team for next RR```";
+                                      "notify               R4 can use this command to send everyone their team info for next RR```";
     static final String SDhelpStr= "```register                     starts registering to event\n" +
                                       "lanes                        displays list of registered members for next event sorted by lane\n"+
                                       "open <power limit>           Open showdown and give power limit between right lane and others\n"+
@@ -343,6 +343,10 @@ public class pingBot {
                             return event;
                         }
                         for(ArrayList<Participant> t:teams) {
+                            final String leader=t.get(0).getName();
+                            StringBuilder sb=new StringBuilder();
+                            for(Participant p:t) { sb.append(" - ").append(p.getName()).append(" (").append(p.power).append(")\n");}
+                            final String teamMates=sb.toString();
                             for(Participant p:t) {
                                 if(p.isDiscord && p.getName().equals("Zaxx")) {
                                     PrivateChannel pv=p.member.getPrivateChannel().block(BLOCK);
@@ -354,9 +358,10 @@ public class pingBot {
                                     pv.createMessage(mcs-> {
                                         mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
                                         mcs.setEmbed(ecs-> {
-                                            ecs.setDescription("Your RR info for "+ finalCurServer.RRevent.name);
-                                            ecs.addField("name 1","value 1",false);
-                                            ecs.addField("name 2","value 2",false);
+                                            ecs.setDescription("Your Reservoir Raid info for "+ finalCurServer.RRevent.name);
+                                            ecs.addField("You have been assigned to "+leader+ "'s team","",false);
+                                            ecs.addField("Your teamMates",teamMates,false);
+                                            ecs.addField("","If you want to change to another team ask one of the R4s",false);
                                             ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW);
                                         });
                                     }).block(BLOCK);

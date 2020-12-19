@@ -345,10 +345,15 @@ public class pingBot {
                         for(ArrayList<Participant> t:teams) {
                             final String leader=t.get(0).getName();
                             StringBuilder sb=new StringBuilder();
-                            for(Participant p:t) { sb.append(" - ").append(p.getName()).append(" (").append(p.power).append(")\n");}
-                            final String teamMates=sb.toString();
+
                             for(Participant p:t) {
                                 if(p.isDiscord && p.getName().equals("Zaxx")) {
+                                    for(Participant pa:t) {
+                                        if (p != pa) {
+                                            sb.append(" - ").append(pa.getName()).append(" (").append(pa.power).append(")\n");
+                                        }
+                                    }
+                                    final String teamMates=sb.toString();
                                     PrivateChannel pv=p.member.getPrivateChannel().block(BLOCK);
                                     if(pv==null) {
                                         System.err.println("Could not get private channel for "+p);
@@ -360,8 +365,9 @@ public class pingBot {
                                         mcs.setEmbed(ecs-> {
                                             ecs.setDescription("Your Reservoir Raid info for "+ finalCurServer.RRevent.name);
                                             ecs.addField("You have been assigned to "+leader+ "'s team","\u200b",false);
-                                            ecs.addField("Your teamMates",teamMates,false);
+                                            ecs.addField("Your team mates",teamMates,false);
                                             ecs.addField("\u200b","If you want to change to another team ask one of the R4s",false);
+                                            ecs.addField("Your attendance to the event is important! We cannot cancel your registration anymore. We count on you!","\u200b",false);
                                             ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW);
                                         });
                                     }).block(BLOCK);

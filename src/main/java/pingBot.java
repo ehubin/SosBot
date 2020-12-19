@@ -6,6 +6,7 @@ import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.Channel;
 import discord4j.core.object.entity.channel.MessageChannel;
+import discord4j.core.object.entity.channel.PrivateChannel;
 import discord4j.core.object.entity.channel.TextChannel;
 import discord4j.rest.util.Color;
 
@@ -41,7 +42,8 @@ public class pingBot {
                                       "r4reg <name> <power> allows to register another player (only for R4s)\n"+
                                       "teams                give a breakdown of participants into teams\n"+
                                       "swap x.y z.t         swaps player y in team x with player t in team z\n"+
-                                      "showmap              displays a map of the game suggesting team placements```";
+                                      "showmap              displays a map of the game suggesting team placements\n"+
+                                      "notify               R4 can use this command to send everyone info their team for next RR```";
     static final String SDhelpStr= "```register                     starts registering to event\n" +
                                       "lanes                        displays list of registered members for next event sorted by lane\n"+
                                       "open <power limit>           Open showdown and give power limit between right lane and others\n"+
@@ -310,6 +312,32 @@ public class pingBot {
                             }).block(BLOCK);
                         } catch(Exception e){
                             e.printStackTrace();
+                        }
+                    }
+                    return event;
+                    case "notify" : {
+                        if(!isR4) {
+                            participant.setStep(Step.begin);
+                            channel.createMessage("Only R4 can notify other players").block(BLOCK);
+                            return event;
+                        }
+                        if(!curServer.RRevent.active) {
+                            participant.setStep(Step.begin);
+                            channel.createMessage("You have to save teams first before notifying people").block(BLOCK);
+                            return event;
+                        }
+                        ArrayList<ArrayList<Participant>> teams=curServer.getRRSavedTeams();
+                        for(ArrayList<Participant> t:teams) {
+                            for(Participant p:t) {
+                                if(p.isDiscord && p.getName().equals("Zaxx")) {
+                                    PrivateChannel pv=p.member.getPrivateChannel().block(BLOCK);
+                                    if(pv==null) {
+                                        System.err.println("Could not get priovate channel for "+p);
+                                        continue;
+                                    }
+                                    pv.createMessage("Notify test");
+                                }
+                            }
                         }
                     }
                     return event;

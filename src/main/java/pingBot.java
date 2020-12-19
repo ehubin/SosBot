@@ -343,17 +343,21 @@ public class pingBot {
                             return event;
                         }
                         for(ArrayList<Participant> t:teams) {
-                            final String leader=t.get(0).getName();
                             StringBuilder sb=new StringBuilder();
 
                             for(Participant p:t) {
                                 if(p.isDiscord && p.member!= null) {
                                     for(Participant pa:t) {
                                         if (p != pa) {
+                                            sb.setLength(0);
                                             sb.append(" - ").append(pa.getName()).append(" (").append(pa.power).append(")\n");
                                         }
                                     }
                                     final String teamMates=sb.toString();
+                                    final String teamAssignment = t.get(0)==p ?
+                                            "You are the leader of one of the "+teams.size()+" teams" :
+                                            "You have been assigned to "+t.get(0).getName()+ "'s team";
+
                                     PrivateChannel pv=p.member.getPrivateChannel().block(BLOCK);
                                     if(pv==null) {
                                         System.err.println("Could not get private channel for "+p);
@@ -364,7 +368,7 @@ public class pingBot {
                                         mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
                                         mcs.setEmbed(ecs-> {
                                             ecs.setDescription("Your Reservoir Raid info for "+ finalCurServer.RRevent.name);
-                                            ecs.addField("You have been assigned to "+leader+ "'s team","\u200b",false);
+                                            ecs.addField(teamAssignment,"\u200b",false);
                                             ecs.addField("Your team mates",teamMates,false);
                                             ecs.addField("\u200b","If you want to change to another team ask one of the R4s",false);
                                             ecs.addField("Your attendance to the event is important! We cannot cancel your registration anymore. We count on you!","\u200b",false);

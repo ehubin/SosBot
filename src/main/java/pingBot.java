@@ -274,7 +274,7 @@ public class pingBot {
                         if(curServer.RRevent.teamSaved) {
                             participant.setStep(Step.begin);
                             ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
-                            channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
+                            channel.createMessage(Server.displayTeams(teams).toString()).block(BLOCK);
                             if(isR4) {
                                 channel.createMessage("You can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3").block(BLOCK);
                                 return event;
@@ -462,7 +462,7 @@ public class pingBot {
                                 channel.createMessage("Swapping "+from.getName()+" and "+to.getName()).block(BLOCK);
                                 from.swap(to);
                                 teams = curServer.getRRSavedTeams();
-                                channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
+                                channel.createMessage(Server.displayTeams(teams).toString()).block(BLOCK);
                             } else {
                                 channel.createMessage("syntax is swap x.y z.t").block(BLOCK);
                             }
@@ -527,7 +527,7 @@ public class pingBot {
                                 }
                                 ArrayList<ArrayList<Participant>> teams = curServer.getRRTeams(nbTeam,registered);
                                 assert(teams!= null);
-                                channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
+                                channel.createMessage(Server.displayTeams(teams).toString()).block(BLOCK);
                                 if(isR4) {
                                     participant.setStep(Step.teamSave);
                                     curServer.RRevent.nbTeams=nbTeam;
@@ -667,25 +667,7 @@ public class pingBot {
 
 
 
-    static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("```");
-        int nbTeam= teams.size();
-        int[] power =new int[nbTeam];
-        for (int i = 0; i < nbTeam; ++i) {
-            for (Participant p : teams.get(i)) {power[i]+= p.power;}
-        }
-        for (int i = 0; i < nbTeam; ++i) {
-            sb.append("Team ").append(i + 1).append(" (").append(power[i]).append(")\n");
-            int j=0;
-            for (Participant p : teams.get(i)) {
-                sb.append(++j).append(". ").append(p.getName()).append(" (").append(p.power).append(")\n");
-            }
-            sb.append("\n");
-        }
-        sb.append("```");
-        return sb;
-    }
+
 
 
 
@@ -858,6 +840,22 @@ public class pingBot {
             float res=0f;
             for(Participant p:t) res+= p.power;
             return res;
+        }
+
+        static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("```");
+            int nbTeam= teams.size();
+            for (int i = 0; i < nbTeam; ++i) {
+                sb.append("Team ").append(i + 1).append(" (").append(teamPow(teams.get(i))).append(")\n");
+                int j=0;
+                for (Participant p : teams.get(i)) {
+                    sb.append(++j).append(". ").append(p.getName()).append(" (").append(p.power).append(")\n");
+                }
+                sb.append("\n");
+            }
+            sb.append("```");
+            return sb;
         }
 
         StringBuilder getSDLanesString() {

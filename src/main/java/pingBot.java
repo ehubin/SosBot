@@ -763,7 +763,7 @@ public class pingBot {
         deleteOneP = dbConnection.prepareStatement("delete from members where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
         selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
         selectRRparticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
-        updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=? where server=? and name=?");
+        updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=?,name=? where server=? and uid=?");
         deleteLocalRRParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane='0' and rr='t' ");
         deleteLocalSDParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane!='0' and rr='f' ");
         updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=?,power=? where uid=?");
@@ -1059,8 +1059,9 @@ public class pingBot {
         public boolean updateRRTeam(int teamNb) {
             try {
                 updateRRTeam.setInt(1, teamNb);
-                updateRRTeam.setLong(2, getGuildId());
-                updateRRTeam.setString(3, getName());
+                updateRRTeam.setString(2, getName());
+                updateRRTeam.setLong(3, getGuildId());
+                updateRRTeam.setLong(4, getUid());
                 updateRRTeam.executeUpdate();
             } catch(SQLException se) {
                 se.printStackTrace();

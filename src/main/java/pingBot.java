@@ -347,7 +347,7 @@ public class pingBot {
                             StringBuilder sb=new StringBuilder();
 
                             for(Participant p:t) {
-                                if(p.isDiscord && p.getName().equals("Zaxx")) {
+                                if(p.isDiscord && p.member!= null) {
                                     for(Participant pa:t) {
                                         if (p != pa) {
                                             sb.append(" - ").append(pa.getName()).append(" (").append(pa.power).append(")\n");

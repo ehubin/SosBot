@@ -359,9 +359,9 @@ public class pingBot {
                                         mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
                                         mcs.setEmbed(ecs-> {
                                             ecs.setDescription("Your Reservoir Raid info for "+ finalCurServer.RRevent.name);
-                                            ecs.addField("You have been assigned to "+leader+ "'s team","",false);
+                                            ecs.addField("You have been assigned to "+leader+ "'s team","\u200b",false);
                                             ecs.addField("Your teamMates",teamMates,false);
-                                            ecs.addField("","If you want to change to another team ask one of the R4s",false);
+                                            ecs.addField("\u200b","If you want to change to another team ask one of the R4s",false);
                                             ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW);
                                         });
                                     }).block(BLOCK);

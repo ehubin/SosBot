@@ -327,15 +327,39 @@ public class pingBot {
                             return event;
                         }
                         ArrayList<ArrayList<Participant>> teams=curServer.getRRSavedTeams();
+                        byte[] img;
+                        Graphics2D g2d=tmpImage.createGraphics();
+                        String[] leaders= new String[teams.size()];
+                        int i=0;
+                        for(ArrayList<Participant> t:teams) { leaders[i++]= t.get(0).getName();}
+                        g2d.drawImage(rrmap,0,0,null);
+                        RRmapTeam.drawTeams(g2d,leaders);
+                        try {
+                            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                            ImageIO.write(tmpImage, "PNG", bos);
+                            img = bos.toByteArray();
+                        } catch(Exception e) {
+                            e.printStackTrace();
+                            return event;
+                        }
                         for(ArrayList<Participant> t:teams) {
                             for(Participant p:t) {
                                 if(p.isDiscord && p.getName().equals("Zaxx")) {
                                     PrivateChannel pv=p.member.getPrivateChannel().block(BLOCK);
                                     if(pv==null) {
-                                        System.err.println("Could not get priovate channel for "+p);
+                                        System.err.println("Could not get private channel for "+p);
                                         continue;
                                     }
-                                    pv.createMessage("Notify test");
+                                    Server finalCurServer = curServer;
+                                    pv.createMessage(mcs-> {
+                                        mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
+                                        mcs.setEmbed(ecs-> {
+                                            ecs.setDescription("Your RR info for "+ finalCurServer.RRevent.name);
+                                            ecs.addField("name 1","value 1",false);
+                                            ecs.addField("name 2","value 2",false);
+                                            ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW);
+                                        });
+                                    }).block(BLOCK);
                                 }
                             }
                         }

@@ -364,7 +364,7 @@ public class pingBot {
                                     channel.createMessage(" Nobody registered yet!").block(BLOCK);
                                     return event;
                                 }
-                                ArrayList<ArrayList<Participant>> teams = getRRTeams(curServer.RRevent.nbTeams,registered,null);
+                                ArrayList<ArrayList<Participant>> teams = curServer.getRRTeams(curServer.RRevent.nbTeams,registered);
                                 assert teams != null;
                                 if(!curServer.RRevent.saveTeams(true)) {
                                     channel.createMessage("unexpected error while trying to save teams");
@@ -525,8 +525,7 @@ public class pingBot {
                                     channel.createMessage(" Nobody registered yet!").block(BLOCK);
                                     return event;
                                 }
-                                int[] power = new int[nbTeam];
-                                ArrayList<ArrayList<Participant>> teams = getRRTeams(nbTeam,registered,power);
+                                ArrayList<ArrayList<Participant>> teams = curServer.getRRTeams(nbTeam,registered);
                                 assert(teams!= null);
                                 channel.createMessage(displayTeams(teams).toString()).block(BLOCK);
                                 if(isR4) {
@@ -667,28 +666,7 @@ public class pingBot {
     }
 
 
-    static ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered,int[] power) {
-        if(registered.size()==0) return null;
-        if(registered.size()<nbTeam) nbTeam=registered.size();
-        ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
-        if(power==null) power = new int[nbTeam];
-        for (int i = 0; i < nbTeam; ++i) {
-            teams.add(new ArrayList<>());
-        }
-        for (Participant p : registered) {
-            int best = 0, min = power[0];
-            for (int i = 1; i < nbTeam; ++i)
-                if (power[i] < min) {
-                    min = power[i];
-                    best = i;
-                }
-            teams.get(best).add(p);
-            power[best] += p.power;
-        }
-        teams.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
-                Float.compare(t2.get(0).power, t1.get(0).power));
-        return teams;
-    }
+
     static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {
         StringBuilder sb = new StringBuilder();
         sb.append("```");
@@ -851,7 +829,34 @@ public class pingBot {
                 res.get(p.RRteamNumber -1).add(p);
             }
             res.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
-                    Float.compare(t2.get(0).power, t1.get(0).power));
+                    Float.compare(teamPow(t2), teamPow(t1)));
+            return res;
+        }
+        ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered) {
+            if(registered.size()==0) return null;
+            if(registered.size()<nbTeam) nbTeam=registered.size();
+            ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
+            int[] power = new int[nbTeam];
+            for (int i = 0; i < nbTeam; ++i) {
+                teams.add(new ArrayList<>());
+            }
+            for (Participant p : registered) {
+                int best = 0, min = power[0];
+                for (int i = 1; i < nbTeam; ++i)
+                    if (power[i] < min) {
+                        min = power[i];
+                        best = i;
+                    }
+                teams.get(best).add(p);
+                power[best] += p.power;
+            }
+            teams.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
+                    Float.compare(teamPow(t2), teamPow(t1)));
+            return teams;
+        }
+        static float teamPow(ArrayList<Participant> t) {
+            float res=0f;
+            for(Participant p:t) res+= p.power;
             return res;
         }
 

@@ -838,7 +838,6 @@ public class pingBot {
         insertP = dbConnection.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
         insertE = dbConnection.prepareStatement("INSERT INTO servers(rrdate,active,server,teamsaved) VALUES(?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
         closeE = dbConnection.prepareStatement("UPDATE servers set active='0' where server=?", Statement.RETURN_GENERATED_KEYS);
-        //saveTeam = dbConnection.prepareStatement("UPDATE servers set teamsaved='t' where server=?", Statement.RETURN_GENERATED_KEYS);
         deleteE = dbConnection.prepareStatement("DELETE from servers where server=?", Statement.RETURN_GENERATED_KEYS);
         deleteP = dbConnection.prepareStatement("delete from members where server=?");
         deleteOneP = dbConnection.prepareStatement("delete from members where name=? and server=?", Statement.RETURN_GENERATED_KEYS);

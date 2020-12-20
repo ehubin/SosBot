@@ -34,6 +34,7 @@ import java.util.stream.Stream;
 
 //Command state machine steps
 enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg,teamSave }
+
 public class pingBot {
     static final String MYNAME="SosBot";
     static  Parser dateParser;
@@ -768,10 +769,12 @@ public class pingBot {
         }
         boolean save() {
             try{
-                SDsave.setBoolean(1, active);
-                SDsave.setFloat(2,threshold );
-                SDsave.setLong( 3,guild.getId().asLong());
-                SDsave.executeUpdate();
+                synchronized (SDsave) {
+                    SDsave.setBoolean(1, active);
+                    SDsave.setFloat(2, threshold);
+                    SDsave.setLong(3, guild.getId().asLong());
+                    SDsave.executeUpdate();
+                }
             } catch(SQLException e) {
                 e.printStackTrace();
                 return false;
@@ -793,9 +796,11 @@ public class pingBot {
         public String toString() { return df.format(date)+(active?"":"*");}
         boolean saveTeams(boolean saved) {
             try {
-                RRsaveTeam.setBoolean(1,saved);
-                RRsaveTeam.setLong(2,guild.getId().asLong());
-                RRsaveTeam.executeUpdate();
+                synchronized (RRsaveTeam) {
+                    RRsaveTeam.setBoolean(1, saved);
+                    RRsaveTeam.setLong(2, guild.getId().asLong());
+                    RRsaveTeam.executeUpdate();
+                }
             } catch(SQLException se) {
                 se.printStackTrace();
                 return false;
@@ -805,11 +810,13 @@ public class pingBot {
         }
         boolean save() {
             try {
-                updateRR.setTimestamp(1, new Timestamp(date.getTime()));
-                updateRR.setBoolean(2, active);
-                updateRR.setBoolean(3, teamSaved);
-                updateRR.setLong(4, guild.getId().asLong());
-                updateRR.executeUpdate();
+                synchronized (updateRR) {
+                    updateRR.setTimestamp(1, new Timestamp(date.getTime()));
+                    updateRR.setBoolean(2, active);
+                    updateRR.setBoolean(3, teamSaved);
+                    updateRR.setLong(4, guild.getId().asLong());
+                    updateRR.executeUpdate();
+                }
             } catch(SQLException ex) {
                 ex.printStackTrace();
                 return false;
@@ -818,8 +825,10 @@ public class pingBot {
         }
         boolean close() {
             try {
-                closeE.setLong(1, guild.getId().asLong());
-                closeE.executeUpdate();
+                synchronized (closeE) {
+                    closeE.setLong(1, guild.getId().asLong());
+                    closeE.executeUpdate();
+                }
             } catch(SQLException ex) {
                 ex.printStackTrace();
                 return false;
@@ -954,11 +963,14 @@ public class pingBot {
         }
         boolean unregisterRR() {
             try {
-                deleteLocalRRParticipants.setLong(1,getId());
-                deleteLocalRRParticipants.executeUpdate();
-
-                RRunregAll.setLong(1,getId());
-                RRunregAll.executeUpdate();
+                synchronized (deleteLocalRRParticipants) {
+                    deleteLocalRRParticipants.setLong(1, getId());
+                    deleteLocalRRParticipants.executeUpdate();
+                }
+                synchronized (RRunregAll) {
+                    RRunregAll.setLong(1, getId());
+                    RRunregAll.executeUpdate();
+                }
             }catch(SQLException se) {
                 se.printStackTrace();
                 return false;
@@ -990,8 +1002,11 @@ public class pingBot {
         }
         void initFromDB() {
             try {
-                selectRRevent.setLong(1,getId());
-                ResultSet rs = selectRRevent.executeQuery();
+                ResultSet rs;
+                synchronized (selectRRevent) {
+                    selectRRevent.setLong(1, getId());
+                    rs = selectRRevent.executeQuery();
+                }
                 if(rs.next()) { // read first event
                     RREvent e=new RREvent(guild);
                     e.date=rs.getTimestamp("rrdate");
@@ -1010,38 +1025,42 @@ public class pingBot {
                     RRevent.active=false;
                     Sd = new SDEvent(guild);
                     Sd.active=false;
-                    createServer.setLong(1,getId());
-                    createServer.setBoolean(2,RRevent.active);
-                    createServer.setBoolean(3,RRevent.teamSaved);
-                    createServer.setBoolean(4,Sd.active);
-                    createServer.setFloat(5,Sd.threshold);
-                    createServer.setTimestamp(6,new Timestamp(RRevent.date.getTime()));
-                    createServer.executeUpdate();
-                }
-                selectRRparticipants.setLong(1,getId());
-                rs=selectRRparticipants.executeQuery();
-                while(rs.next()) {
-                    long uid=rs.getLong("uid");
-                    Participant p=sessions.get(uid);
-                    if(p==null) {
-                        boolean isDiscord=rs.getBoolean("isdiscord");
-                        if(isDiscord) {
-                            Member m=guild.getMemberById(Snowflake.of(uid)).onErrorContinue((t,e)-> t.printStackTrace()).block(BLOCK);
-                            if(m==null) {
-                                System.err.println("Error retrieving member for "+uid);
-                                continue;
-                            }
-                            p=new Participant(m,guild);
-                        } else {
-                            p=new Participant(rs.getString("name"),uid,guild);
-                        }
-                        sessions.put(uid, p);
-
+                    synchronized (createServer) {
+                        createServer.setLong(1, getId());
+                        createServer.setBoolean(2, RRevent.active);
+                        createServer.setBoolean(3, RRevent.teamSaved);
+                        createServer.setBoolean(4, Sd.active);
+                        createServer.setFloat(5, Sd.threshold);
+                        createServer.setTimestamp(6, new Timestamp(RRevent.date.getTime()));
+                        createServer.executeUpdate();
                     }
-                    p.registeredToRR =rs.getBoolean("rr");
-                    p.power=rs.getFloat("power");
-                    p.RRteamNumber =rs.getInt("team");
-                    p.lane = SDPos.values()[rs.getInt("lane")];
+                }
+                synchronized (selectRRparticipants) {
+                    selectRRparticipants.setLong(1, getId());
+                    rs = selectRRparticipants.executeQuery();
+                    while (rs.next()) {
+                        long uid = rs.getLong("uid");
+                        Participant p = sessions.get(uid);
+                        if (p == null) {
+                            boolean isDiscord = rs.getBoolean("isdiscord");
+                            if (isDiscord) {
+                                Member m = guild.getMemberById(Snowflake.of(uid)).onErrorContinue((t, e) -> t.printStackTrace()).block(BLOCK);
+                                if (m == null) {
+                                    System.err.println("Error retrieving member for " + uid);
+                                    continue;
+                                }
+                                p = new Participant(m, guild);
+                            } else {
+                                p = new Participant(rs.getString("name"), uid, guild);
+                            }
+                            sessions.put(uid, p);
+
+                        }
+                        p.registeredToRR = rs.getBoolean("rr");
+                        p.power = rs.getFloat("power");
+                        p.RRteamNumber = rs.getInt("team");
+                        p.lane = SDPos.values()[rs.getInt("lane")];
+                    }
                 }
 
             } catch(SQLException e) {
@@ -1119,15 +1138,17 @@ public class pingBot {
 
         boolean save() {
             try {
-                insertP.setString(1, getName());
-                insertP.setFloat(2, power);
-                insertP.setLong(3,getGuildId());
-                insertP.setInt(4,RRteamNumber);
-                insertP.setInt(5,lane.ordinal());
-                insertP.setLong(6,uid);
-                insertP.setBoolean(7,registeredToRR);
-                insertP.setBoolean(8,isDiscord);
-                insertP.executeUpdate();
+                synchronized (insertP) {
+                    insertP.setString(1, getName());
+                    insertP.setFloat(2, power);
+                    insertP.setLong(3, getGuildId());
+                    insertP.setInt(4, RRteamNumber);
+                    insertP.setInt(5, lane.ordinal());
+                    insertP.setLong(6, uid);
+                    insertP.setBoolean(7, registeredToRR);
+                    insertP.setBoolean(8, isDiscord);
+                    insertP.executeUpdate();
+                }
             } catch(SQLException e) {
                 e.printStackTrace();
                 return false;
@@ -1136,10 +1157,12 @@ public class pingBot {
         }
         boolean setRRregistered(boolean b) {
             try{
-                updateRRreg.setBoolean(1,b);
-                updateRRreg.setFloat(2,power);
-                updateRRreg.setLong(3,getUid());
-                updateRRreg.executeUpdate();
+                synchronized (updateRRreg) {
+                    updateRRreg.setBoolean(1, b);
+                    updateRRreg.setFloat(2, power);
+                    updateRRreg.setLong(3, getUid());
+                    updateRRreg.executeUpdate();
+                }
             }catch(SQLException se) {
                 se.printStackTrace();
             }
@@ -1149,11 +1172,13 @@ public class pingBot {
 
         public boolean updateRRTeam(int teamNb) {
             try {
-                updateRRTeam.setInt(1, teamNb);
-                updateRRTeam.setString(2, getName());
-                updateRRTeam.setLong(3, getGuildId());
-                updateRRTeam.setLong(4, getUid());
-                updateRRTeam.executeUpdate();
+                synchronized (updateRRTeam) {
+                    updateRRTeam.setInt(1, teamNb);
+                    updateRRTeam.setString(2, getName());
+                    updateRRTeam.setLong(3, getGuildId());
+                    updateRRTeam.setLong(4, getUid());
+                    updateRRTeam.executeUpdate();
+                }
             } catch(SQLException se) {
                 se.printStackTrace();
                 return false;
@@ -1181,11 +1206,13 @@ public class pingBot {
         }
         boolean saveSD() {
             try {
-                updateSDLane.setInt(1,lane.ordinal());
-                updateSDLane.setFloat(2,power);
-                updateSDLane.setLong(3,getGuildId());
-                updateSDLane.setString(4,getName());
-                updateSDLane.executeUpdate();
+                synchronized (updateSDLane) {
+                    updateSDLane.setInt(1, lane.ordinal());
+                    updateSDLane.setFloat(2, power);
+                    updateSDLane.setLong(3, getGuildId());
+                    updateSDLane.setString(4, getName());
+                    updateSDLane.executeUpdate();
+                }
             } catch(SQLException se) {
                 se.printStackTrace();
                 return false;

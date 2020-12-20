@@ -784,7 +784,7 @@ public class pingBot {
     static class RREvent {
         static SimpleDateFormat df=new SimpleDateFormat("EEEE dd MMM h a z",Locale.US);
         static{df.setTimeZone(TimeZone.getTimeZone("UTC"));}
-        public Date date;
+        public Date date=new Date(0);
         boolean active=true;
         boolean teamSaved=false;
         Guild guild;
@@ -805,15 +805,11 @@ public class pingBot {
         }
         boolean save() {
             try {
-                deleteE.setLong(1, guild.getId().asLong());
-                deleteE.executeUpdate();
-                insertE.setDate(1, new java.sql.Date(date.getTime()));
-                insertE.setBoolean(2, active);
-                insertE.setLong(3, guild.getId().asLong());
-                insertE.setBoolean(4, teamSaved);
-                insertE.executeUpdate();
-                deleteP.setLong(1, guild.getId().asLong());
-                deleteP.executeUpdate();
+                updateRR.setTimestamp(1, new Timestamp(date.getTime()));
+                updateRR.setBoolean(2, active);
+                updateRR.setBoolean(3, teamSaved);
+                updateRR.setLong(4, guild.getId().asLong());
+                updateRR.executeUpdate();
             } catch(SQLException ex) {
                 ex.printStackTrace();
                 return false;
@@ -834,17 +830,16 @@ public class pingBot {
     }
 
 
-    static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants,
+    static PreparedStatement insertP, updateRR,deleteOneP,closeE,selectRRevent,selectRRparticipants,
              updateRRTeam,updateRRreg,RRunregAll,RRsaveTeam,updateSDLane,SDsave,
-            deleteLocalRRParticipants, deleteLocalSDParticipants,           updateUID,selectParticipants;
+            deleteLocalRRParticipants, deleteLocalSDParticipants, createServer,          updateUID,selectParticipants;
     private static void connectToDB() throws  SQLException {
         String dbUrl = System.getenv("JDBC_DATABASE_URL");
         dbConnection = DriverManager.getConnection(dbUrl);
+        createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdactive,sdthreshold,rrdate) VALUES(?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
         insertP = dbConnection.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
-        insertE = dbConnection.prepareStatement("INSERT INTO servers(rrdate,active,server,teamsaved) VALUES(?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+        updateRR = dbConnection.prepareStatement("UPDATE servers set rrdate=?,active=?,teamsaved=? where server=?", Statement.RETURN_GENERATED_KEYS);
         closeE = dbConnection.prepareStatement("UPDATE servers set active='0' where server=?", Statement.RETURN_GENERATED_KEYS);
-        deleteE = dbConnection.prepareStatement("DELETE from servers where server=?", Statement.RETURN_GENERATED_KEYS);
-        deleteP = dbConnection.prepareStatement("delete from members where server=?");
         deleteOneP = dbConnection.prepareStatement("delete from members where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
         selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
         selectRRparticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
@@ -999,7 +994,7 @@ public class pingBot {
                 ResultSet rs = selectRRevent.executeQuery();
                 if(rs.next()) { // read first event
                     RREvent e=new RREvent(guild);
-                    e.date=rs.getDate("rrdate");
+                    e.date=rs.getTimestamp("rrdate");
                     e.active=rs.getBoolean("active");
                     e.teamSaved=rs.getBoolean("teamsaved");
                     RRevent = e;
@@ -1009,12 +1004,19 @@ public class pingBot {
                     se.threshold = rs.getFloat("sdthreshold");
                     Sd = se;
 
-                } else {
+                } else { //server is not in db
                     RRevent=new RREvent(guild);
                     // first time event with empty DB is inactive
                     RRevent.active=false;
                     Sd = new SDEvent(guild);
                     Sd.active=false;
+                    createServer.setLong(1,getId());
+                    createServer.setBoolean(2,RRevent.active);
+                    createServer.setBoolean(3,RRevent.teamSaved);
+                    createServer.setBoolean(4,Sd.active);
+                    createServer.setFloat(5,Sd.threshold);
+                    createServer.setTimestamp(6,new Timestamp(RRevent.date.getTime()));
+                    createServer.executeUpdate();
                 }
                 selectRRparticipants.setLong(1,getId());
                 rs=selectRRparticipants.executeQuery();

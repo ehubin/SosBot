@@ -961,14 +961,18 @@ public class pingBot {
             try {
                 deleteLocalRRParticipants.setLong(1,getId());
                 deleteLocalRRParticipants.executeUpdate();
+
                 RRunregAll.setLong(1,getId());
                 RRunregAll.executeUpdate();
             }catch(SQLException se) {
                 se.printStackTrace();
                 return false;
             }
+            sessions.values().removeIf(p->p.getGuildId()==getId() && !p.isDiscord && p.registeredToRR && p.lane==SDPos.Undef);
+            for(Participant p:sessions.values()) {
+                if(p.isDiscord && p.getGuildId()==getId()) p.registeredToRR=false;
+            }
             return true;
-
         }
         Participant createNewDiscordParticipant(Member m) {
             Participant newby = new Participant(m,guild);
@@ -980,12 +984,12 @@ public class pingBot {
         }
         @SuppressWarnings("SameParameterValue")
         Participant createRRParticipant(String name, float power, boolean rr) {
-            Participant newby = new Participant(name,guild);
-            newby.setRRregistered(rr);
-            newby.power=power;
-            if(newby.save()) {
-                sessions.put(newby.uid,newby);
-                return newby;
+            Participant newbie = new Participant(name,guild);
+            newbie.setRRregistered(rr);
+            newbie.power=power;
+            if(newbie.save()) {
+                sessions.put(newbie.uid,newbie);
+                return newbie;
             }
             return null;
         }

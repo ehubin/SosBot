@@ -10,6 +10,10 @@ repositories {
 }
 
 dependencies {
+    //date parser Natty deps
+    implementation('com.joestelmach:natty:0.13')
+    implementation('org.slf4j:slf4j-simple:2.0.0-alpha1')
+
     implementation 'com.discord4j:discord4j-core:3.1.1'
     compile group: 'org.postgresql', name: 'postgresql', version: '42.2.18'
 

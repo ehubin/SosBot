@@ -1,3 +1,5 @@
+import com.joestelmach.natty.DateGroup;
+import com.joestelmach.natty.Parser;
 import discord4j.common.util.Snowflake;
 import discord4j.core.*;
 import discord4j.core.event.domain.message.MessageCreateEvent;
@@ -17,9 +19,11 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -31,6 +35,7 @@ import java.util.stream.Stream;
 //Command state machine steps
 enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg,teamSave }
 public class pingBot {
+    static  Parser dateParser;
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     static final Pattern swapPattern=Pattern.compile("\\s*(\\d).(\\d+)\\s*(\\d).(\\d+)");
     static final Pattern oneFloatPattern=Pattern.compile("\\s*(\\d+.?\\d*)");
@@ -59,11 +64,13 @@ public class pingBot {
     static final String showdownName="\u2694showdown\u2694";
 
     public static void main(final String[] args) {
+        System.setProperty(org.slf4j.simple.SimpleLogger.DEFAULT_LOG_LEVEL_KEY, "warn");
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC")); //all dates in UTC for sos
+        dateParser=new Parser();
         final String token = System.getenv("TOKEN");
         final DiscordClient client = DiscordClient.create(token);
+
         final GatewayDiscordClient gateway = client.login().block(BLOCK);
-
-
         if(gateway==null) {
             System.err.println("Failed to initialize discord Gateway");
             System.exit(-1);
@@ -366,7 +373,7 @@ public class pingBot {
                                     pv.createMessage(mcs-> {
                                         mcs.addFile("rrmap.png",new ByteArrayInputStream(img));
                                         mcs.setEmbed(ecs-> {
-                                            ecs.setDescription("Your Reservoir Raid info for "+ finalCurServer.RRevent.name);
+                                            ecs.setDescription("Your Reservoir Raid info for "+ finalCurServer.RRevent);
                                             ecs.addField(teamAssignment,"\u200b",false);
                                             ecs.addField("Your team mates",teamMates,false);
                                             ecs.addField("\u200b","If you want to change to another team ask one of the R4s",false);
@@ -619,9 +626,12 @@ public class pingBot {
                                 channel.createMessage("registration aborted").block(BLOCK);
                                 return event;
                             case create:
-                                curServer.newRRevent.name = rawContent.trim();
-                                participant.setStep(Step.confirmCreate);
-                                channel.createMessage("do you confirm you want to create new RR event \"" + curServer.newRRevent + "\" (yes/no)").block(BLOCK);
+                                List<DateGroup> dg=dateParser.parse(rawContent.trim());
+                                if(dg.size()==1 && dg.get(0).getDates().size()==1) {
+                                    curServer.newRRevent.date=dg.get(0).getDates().get(0);
+                                    participant.setStep(Step.confirmCreate);
+                                    channel.createMessage("do you confirm you want to create new RR event \"" + curServer.newRRevent + "\" (yes/no)").block(BLOCK);
+                                }
                                 return event;
                             case confirmCreate:
                                 participant.setStep(Step.begin);
@@ -768,18 +778,18 @@ public class pingBot {
     }
 
     static class RREvent {
-        String name="";
+        static SimpleDateFormat df=new SimpleDateFormat("EEEEEEEEE KK:mm Z");
+        public Date date;
         boolean active=true;
         boolean teamSaved=false;
         Guild guild;
         int nbTeams=-1;
         public RREvent(Guild g) { this.guild=g;}
-        public String toString() { return name+(active?"":"*");}
+        public String toString() { return df.format(date)+(active?"":"*");}
         boolean saveTeams(boolean saved) {
             try {
                 RRsaveTeam.setBoolean(1,saved);
                 RRsaveTeam.setLong(2,guild.getId().asLong());
-                RRsaveTeam.setString(3,name);
                 RRsaveTeam.executeUpdate();
             } catch(SQLException se) {
                 se.printStackTrace();
@@ -792,7 +802,7 @@ public class pingBot {
             try {
                 deleteE.setLong(1, guild.getId().asLong());
                 deleteE.executeUpdate();
-                insertE.setString(1, name);
+                insertE.setDate(1, new java.sql.Date(date.getTime()));
                 insertE.setBoolean(2, active);
                 insertE.setLong(3, guild.getId().asLong());
                 insertE.setBoolean(4, teamSaved);
@@ -807,8 +817,7 @@ public class pingBot {
         }
         boolean close() {
             try {
-                closeE.setString(1, name);
-                closeE.setLong(2, guild.getId().asLong());
+                closeE.setLong(1, guild.getId().asLong());
                 closeE.executeUpdate();
             } catch(SQLException ex) {
                 ex.printStackTrace();
@@ -821,15 +830,15 @@ public class pingBot {
 
 
     static PreparedStatement insertP,insertE,deleteP,deleteOneP,closeE,deleteE,selectRRevent,selectRRparticipants,
-            saveTeam, updateRRTeam,updateRRreg,RRunregAll,RRsaveTeam,updateSDLane,SDsave,
+             updateRRTeam,updateRRreg,RRunregAll,RRsaveTeam,updateSDLane,SDsave,
             deleteLocalRRParticipants, deleteLocalSDParticipants,           updateUID,selectParticipants;
     private static void connectToDB() throws  SQLException {
         String dbUrl = System.getenv("JDBC_DATABASE_URL");
         dbConnection = DriverManager.getConnection(dbUrl);
         insertP = dbConnection.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
-        insertE = dbConnection.prepareStatement("INSERT INTO servers(name,active,server,teamsaved) VALUES(?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
-        closeE = dbConnection.prepareStatement("UPDATE servers set active='0' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
-        saveTeam = dbConnection.prepareStatement("UPDATE servers set teamsaved='t' where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
+        insertE = dbConnection.prepareStatement("INSERT INTO servers(rrdate,active,server,teamsaved) VALUES(?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+        closeE = dbConnection.prepareStatement("UPDATE servers set active='0' where server=?", Statement.RETURN_GENERATED_KEYS);
+        //saveTeam = dbConnection.prepareStatement("UPDATE servers set teamsaved='t' where server=?", Statement.RETURN_GENERATED_KEYS);
         deleteE = dbConnection.prepareStatement("DELETE from servers where server=?", Statement.RETURN_GENERATED_KEYS);
         deleteP = dbConnection.prepareStatement("delete from members where server=?");
         deleteOneP = dbConnection.prepareStatement("delete from members where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
@@ -839,7 +848,7 @@ public class pingBot {
         deleteLocalRRParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane='0' and rr='t' ");
         deleteLocalSDParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane!='0' and rr='f' ");
         updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=?,power=? where uid=?");
-        RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=? and name=?");
+        RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=?");
         SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
         updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=?,power=? where server=? and name=?");
         RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
@@ -982,7 +991,7 @@ public class pingBot {
                 ResultSet rs = selectRRevent.executeQuery();
                 if(rs.next()) { // read first event
                     RREvent e=new RREvent(guild);
-                    e.name=rs.getString("name");
+                    e.date=rs.getDate("rrdate");
                     e.active=rs.getBoolean("active");
                     e.teamSaved=rs.getBoolean("teamsaved");
                     RRevent = e;

@@ -35,6 +35,7 @@ import java.util.stream.Stream;
 //Command state machine steps
 enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg,teamSave }
 public class pingBot {
+    static final String MYNAME="SosBot";
     static  Parser dateParser;
     static final Pattern registerPattern= Pattern.compile("(.*\\S)\\s+(\\d+.?\\d*)");
     static final Pattern swapPattern=Pattern.compile("\\s*(\\d).(\\d+)\\s*(\\d).(\\d+)");
@@ -119,6 +120,7 @@ public class pingBot {
             return event;
         }
         if(!mc.getType().equals(Channel.Type.GUILD_TEXT)) {
+            if(event.getMember().isPresent() && event.getMember().get().getDisplayName().equals(MYNAME)) return event;
             System.out.println("Not processing message in non text channels for now");
             return event;
         }
@@ -200,7 +202,7 @@ public class pingBot {
             boolean isR4 = foundR4[0];
             user = m.getDisplayName();
             // don't process bot messages and log user messages
-            if(user.equals("SosBot")) return event;
+            if(user.equals(MYNAME)) return event;
             else System.out.println("==>" + message.getContent() + ", " + user);
             //HashMap<String,Participant> sessions=curServer.sessions;
             Participant participant = curServer.sessions.get(m.getId().asLong());
@@ -778,7 +780,8 @@ public class pingBot {
     }
 
     static class RREvent {
-        static SimpleDateFormat df=new SimpleDateFormat("EEEEEEEEE KK:mm Z");
+        static SimpleDateFormat df=new SimpleDateFormat("EEEE dd MMM h a z",Locale.US);
+        static{df.setTimeZone(TimeZone.getTimeZone("UTC"));}
         public Date date;
         boolean active=true;
         boolean teamSaved=false;

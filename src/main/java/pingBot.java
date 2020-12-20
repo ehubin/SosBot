@@ -839,9 +839,9 @@ public class pingBot {
     }
 
 
-    static PreparedStatement insertP, updateRR,deleteOneP,closeE,selectRRevent,selectRRparticipants,
+    static PreparedStatement insertP, updateRR,closeE,selectRRevent, selectParticipants,
              updateRRTeam,updateRRreg,RRunregAll,RRsaveTeam,updateSDLane,SDsave,
-            deleteLocalRRParticipants, deleteLocalSDParticipants, createServer,          updateUID,selectParticipants;
+            deleteLocalRRParticipants, deleteLocalSDParticipants, createServer,          updateUID, selectAllParticipants;
     private static void connectToDB() throws  SQLException {
         String dbUrl = System.getenv("JDBC_DATABASE_URL");
         dbConnection = DriverManager.getConnection(dbUrl);
@@ -849,20 +849,19 @@ public class pingBot {
         insertP = dbConnection.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
         updateRR = dbConnection.prepareStatement("UPDATE servers set rrdate=?,active=?,teamsaved=? where server=?", Statement.RETURN_GENERATED_KEYS);
         closeE = dbConnection.prepareStatement("UPDATE servers set active='0' where server=?", Statement.RETURN_GENERATED_KEYS);
-        deleteOneP = dbConnection.prepareStatement("delete from members where name=? and server=?", Statement.RETURN_GENERATED_KEYS);
         selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
-        selectRRparticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
+        selectParticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
         updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=?,name=? where server=? and uid=?");
         deleteLocalRRParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane='0' and rr='t' ");
         deleteLocalSDParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane!='0' and rr='f' ");
-        updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=?,power=? where uid=?");
+        updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=?,power=? where server=? and uid=?");
         RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=?");
         SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
-        updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=?,power=? where server=? and name=?");
+        updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=?,power=? where server=? and uid=?");
         RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
 
         updateUID =  dbConnection.prepareStatement("UPDATE  members set uid=? where server=? and name=?");
-        selectParticipants = dbConnection.prepareStatement("SELECT * FROM members");
+        selectAllParticipants = dbConnection.prepareStatement("SELECT * FROM members");
     }
     static class Server {
         Guild guild;
@@ -1035,9 +1034,9 @@ public class pingBot {
                         createServer.executeUpdate();
                     }
                 }
-                synchronized (selectRRparticipants) {
-                    selectRRparticipants.setLong(1, getId());
-                    rs = selectRRparticipants.executeQuery();
+                synchronized (selectParticipants) {
+                    selectParticipants.setLong(1, getId());
+                    rs = selectParticipants.executeQuery();
                     while (rs.next()) {
                         long uid = rs.getLong("uid");
                         Participant p = sessions.get(uid);
@@ -1160,7 +1159,8 @@ public class pingBot {
                 synchronized (updateRRreg) {
                     updateRRreg.setBoolean(1, b);
                     updateRRreg.setFloat(2, power);
-                    updateRRreg.setLong(3, getUid());
+                    updateRRreg.setLong(3, getGuildId());
+                    updateRRreg.setLong(4, getUid());
                     updateRRreg.executeUpdate();
                 }
             }catch(SQLException se) {
@@ -1210,7 +1210,7 @@ public class pingBot {
                     updateSDLane.setInt(1, lane.ordinal());
                     updateSDLane.setFloat(2, power);
                     updateSDLane.setLong(3, getGuildId());
-                    updateSDLane.setString(4, getName());
+                    updateSDLane.setLong(4, getUid());
                     updateSDLane.executeUpdate();
                 }
             } catch(SQLException se) {

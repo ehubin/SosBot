@@ -633,6 +633,8 @@ public class pingBot {
                                     curServer.newRRevent.date=dg.get(0).getDates().get(0);
                                     participant.setStep(Step.confirmCreate);
                                     channel.createMessage("do you confirm you want to create new RR event \"" + curServer.newRRevent + "\" (yes/no)").block(BLOCK);
+                                } else {
+                                    channel.createMessage("Ambiguous date "+rawContent.trim()).block(BLOCK);
                                 }
                                 return event;
                             case confirmCreate:

@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
 
 //Command state machine steps
 enum Step { begin,registration,power,cancel,create, confirmCreate, teamsNb, closeReg,teamSave }
@@ -839,245 +839,33 @@ public class pingBot {
     }
 
 
-    static PreparedStatement insertP, updateRR,closeE,selectRRevent, selectParticipants,
-             updateRRTeam,updateRRreg,RRunregAll,RRsaveTeam,updateSDLane,SDsave,
+    static PreparedStatement  updateRR,closeE,selectRRevent,
+             RRunregAll,RRsaveTeam,SDsave,
             deleteLocalRRParticipants, deleteLocalSDParticipants, createServer,          updateUID, selectAllParticipants;
     private static void connectToDB() throws  SQLException {
         String dbUrl = System.getenv("JDBC_DATABASE_URL");
         dbConnection = DriverManager.getConnection(dbUrl);
-        createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdactive,sdthreshold,rrdate) VALUES(?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
-        insertP = dbConnection.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+        AnalysisCenter.initQueries(dbConnection);
+        Participant.initQueries(dbConnection);
+        Server.initQueries(dbConnection);
+
+
         updateRR = dbConnection.prepareStatement("UPDATE servers set rrdate=?,active=?,teamsaved=? where server=?", Statement.RETURN_GENERATED_KEYS);
         closeE = dbConnection.prepareStatement("UPDATE servers set active='0' where server=?", Statement.RETURN_GENERATED_KEYS);
-        selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
-        selectParticipants = dbConnection.prepareStatement("SELECT * FROM members where server=?");
-        updateRRTeam =  dbConnection.prepareStatement("UPDATE  members set team=?,name=? where server=? and uid=?");
-        deleteLocalRRParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane='0' and rr='t' ");
-        deleteLocalSDParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane!='0' and rr='f' ");
-        updateRRreg =  dbConnection.prepareStatement("UPDATE  members set rr=?,power=? where server=? and uid=?");
+
+
+
+
+
         RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=?");
         SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
-        updateSDLane =  dbConnection.prepareStatement("UPDATE  members set lane=?,power=? where server=? and uid=?");
-        RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
+
+
 
         updateUID =  dbConnection.prepareStatement("UPDATE  members set uid=? where server=? and name=?");
         selectAllParticipants = dbConnection.prepareStatement("SELECT * FROM members");
     }
-    static class Server {
-        Guild guild;
-        RREvent RRevent,newRRevent;
-        SDEvent Sd;
-        HashMap<Long,Participant> sessions = new HashMap<>();
 
-        public Server(Guild guild) {
-            this.guild=guild;
-            RRevent= new RREvent(guild);
-            newRRevent= new RREvent(guild);
-        }
-
-        public long getId() {
-            return guild.getId().asLong();
-        }
-        List<Participant> getRegisteredRRparticipants() {
-            return  sessions.values().stream().filter(i -> i.registeredToRR)
-                    .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
-                    .collect(Collectors.toList());
-
-        }
-        Stream<Participant> getRegisteredSDparticipants() {
-            return  sessions.values().stream().filter(i -> i.lane != SDPos.Undef)
-                    .sorted(Comparator.comparingDouble(Participant::getPower).reversed());
-        }
-
-        ArrayList<ArrayList<Participant>> getRRSavedTeams() {
-            List<Participant>list=sessions.values().stream().filter(i -> i.registeredToRR)
-                    .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
-                    .collect(Collectors.toList());
-            ArrayList<ArrayList<Participant>> res = new ArrayList<>();
-            for(Participant p:list) {
-                while(res.size()<p.RRteamNumber) res.add(new ArrayList<>());
-                res.get(p.RRteamNumber -1).add(p);
-            }
-            res.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
-                    Float.compare(teamPow(t2), teamPow(t1)));
-            return res;
-        }
-        ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam,List<Participant> registered) {
-            if(registered.size()==0) return null;
-            if(registered.size()<nbTeam) nbTeam=registered.size();
-            ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
-            int[] power = new int[nbTeam];
-            for (int i = 0; i < nbTeam; ++i) {
-                teams.add(new ArrayList<>());
-            }
-            for (Participant p : registered) {
-                int best = 0, min = power[0];
-                for (int i = 1; i < nbTeam; ++i)
-                    if (power[i] < min) {
-                        min = power[i];
-                        best = i;
-                    }
-                teams.get(best).add(p);
-                power[best] += p.power;
-            }
-            teams.sort((ArrayList<Participant> t1,ArrayList<Participant> t2)->
-                    Float.compare(teamPow(t2), teamPow(t1)));
-            return teams;
-        }
-        static float teamPow(ArrayList<Participant> t) {
-            float res=0f;
-            for(Participant p:t) res+= p.power;
-            return res;
-        }
-
-        static StringBuilder displayTeams(ArrayList<ArrayList<Participant>> teams) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("```");
-            int nbTeam= teams.size();
-            for (int i = 0; i < nbTeam; ++i) {
-                sb.append("Team ").append(i + 1).append(" (").append(teamPow(teams.get(i))).append(")\n");
-                int j=0;
-                for (Participant p : teams.get(i)) {
-                    sb.append(++j).append(". ").append(p.getName()).append(" (").append(p.power).append(")\n");
-                }
-                sb.append("\n");
-            }
-            sb.append("```");
-            return sb;
-        }
-
-        StringBuilder getSDLanesString() {
-            final StringBuilder sb=new StringBuilder("```");
-            final AtomicReference<SDPos> lane= new AtomicReference<>(SDPos.Undef);
-            getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal()).reversed()
-                    .thenComparing(p -> p.power).reversed()).forEachOrdered(p -> {
-                        if(!p.lane.equals(lane.get())) {
-                            lane.set(p.lane);
-                            sb.append("\n>>>").append(p.lane).append("\n");
-                        }
-                        sb.append(p.getName()).append(" (").append(p.power).append(")\n");
-            });
-            sb.append("\n```");
-            return sb;
-        }
-        boolean unregisterRR() {
-            try {
-                synchronized (deleteLocalRRParticipants) {
-                    deleteLocalRRParticipants.setLong(1, getId());
-                    deleteLocalRRParticipants.executeUpdate();
-                }
-                synchronized (RRunregAll) {
-                    RRunregAll.setLong(1, getId());
-                    RRunregAll.executeUpdate();
-                }
-            }catch(SQLException se) {
-                se.printStackTrace();
-                return false;
-            }
-            sessions.values().removeIf(p->p.getGuildId()==getId() && !p.isDiscord && p.registeredToRR && p.lane==SDPos.Undef);
-            for(Participant p:sessions.values()) {
-                if(p.isDiscord && p.getGuildId()==getId()) p.registeredToRR=false;
-            }
-            return true;
-        }
-        Participant createNewDiscordParticipant(Member m) {
-            Participant newby = new Participant(m,guild);
-            if(newby.save()) {
-                sessions.put(newby.uid,newby);
-                return newby;
-            }
-            return null;
-        }
-        @SuppressWarnings("SameParameterValue")
-        Participant createRRParticipant(String name, float power, boolean rr) {
-            Participant newbie = new Participant(name,guild);
-            newbie.setRRregistered(rr);
-            newbie.power=power;
-            if(newbie.save()) {
-                sessions.put(newbie.uid,newbie);
-                return newbie;
-            }
-            return null;
-        }
-        void initFromDB() {
-            try {
-                ResultSet rs;
-                synchronized (selectRRevent) {
-                    selectRRevent.setLong(1, getId());
-                    rs = selectRRevent.executeQuery();
-                }
-                if(rs.next()) { // read first event
-                    RREvent e=new RREvent(guild);
-                    e.date=rs.getTimestamp("rrdate");
-                    e.active=rs.getBoolean("active");
-                    e.teamSaved=rs.getBoolean("teamsaved");
-                    RRevent = e;
-
-                    SDEvent se = new SDEvent(guild);
-                    se.active = rs.getBoolean("sdactive");
-                    se.threshold = rs.getFloat("sdthreshold");
-                    Sd = se;
-
-                } else { //server is not in db
-                    RRevent=new RREvent(guild);
-                    // first time event with empty DB is inactive
-                    RRevent.active=false;
-                    Sd = new SDEvent(guild);
-                    Sd.active=false;
-                    synchronized (createServer) {
-                        createServer.setLong(1, getId());
-                        createServer.setBoolean(2, RRevent.active);
-                        createServer.setBoolean(3, RRevent.teamSaved);
-                        createServer.setBoolean(4, Sd.active);
-                        createServer.setFloat(5, Sd.threshold);
-                        createServer.setTimestamp(6, new Timestamp(RRevent.date.getTime()));
-                        createServer.executeUpdate();
-                    }
-                }
-                synchronized (selectParticipants) {
-                    selectParticipants.setLong(1, getId());
-                    rs = selectParticipants.executeQuery();
-                    while (rs.next()) {
-                        long uid = rs.getLong("uid");
-                        Participant p = sessions.get(uid);
-                        if (p == null) {
-                            boolean isDiscord = rs.getBoolean("isdiscord");
-                            if (isDiscord) {
-                                Member m = guild.getMemberById(Snowflake.of(uid)).onErrorContinue((t, e) -> t.printStackTrace()).block(BLOCK);
-                                if (m == null) {
-                                    System.err.println("Error retrieving member for " + uid);
-                                    continue;
-                                }
-                                p = new Participant(m, guild);
-                            } else {
-                                p = new Participant(rs.getString("name"), uid, guild);
-                            }
-                            sessions.put(uid, p);
-
-                        }
-                        p.registeredToRR = rs.getBoolean("rr");
-                        p.power = rs.getFloat("power");
-                        p.RRteamNumber = rs.getInt("team");
-                        p.lane = SDPos.values()[rs.getInt("lane")];
-                    }
-                }
-
-            } catch(SQLException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public Participant createSDParticipant(String name, float pow, SDPos lane) {
-            Participant newbie = new Participant(name,guild);
-            newbie.lane=lane;
-            newbie.power=pow;
-            if(newbie.save()) {
-                sessions.put(newbie.uid,newbie);
-                return newbie;
-            }
-            return null;
-        }
-    }
 
 
     enum SDPos { Undef,Left,Center,Right}
@@ -1089,139 +877,7 @@ public class pingBot {
             return -1;
         }
     }
-    static class Participant {
-        //String name;
-        boolean isDiscord;
-        long uid;
-        String name;
-        private final Member member;
-        Guild guild;
-        float power=0.0f;
-        boolean registeredToRR =false;
-        Step step=Step.begin;
-        long timestamp=-1L;
-        int RRteamNumber =-1;
-        SDPos lane=SDPos.Undef;
-        void setStep(Step s) { step=s; timestamp=System.currentTimeMillis();}
-        boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.begin;}
-        // create a discord-based participant
-        private Participant(Member m,Guild g) {
-            member=m; guild=g;isDiscord=true;
-            name=member.getDisplayName();
-            uid=member.getId().asLong();
-        }
-        //create a non-discord participant from first time
-        private Participant(String n,Guild g) {
-            member=null; guild=g;isDiscord=false;
-            name=n;
-            uid=generateUID(n);
-        }
-        //create a non-discord participant from existing uid
-        private Participant(String n,long uid,Guild g) {
-            member=null; guild=g;isDiscord=false;
-            name=n;
-            this.uid=uid;
-        }
-        static private final long offset=(2020L-1970L)*31536000L*1000L;
-        private long generateUID(String n) {
-            long ts=System.currentTimeMillis()-offset;
-            long str= n.hashCode()%8388593;
-            if(str<0) str=-str;
-            return (ts<<23)|str;
-        }
 
-        public String toString() { return getName()+"\t"+power;}
-        public String getName() { return name;}
-        public long getGuildId() { return guild.getId().asLong();}
-        public long getUid() { return uid;}
-
-        boolean save() {
-            try {
-                synchronized (insertP) {
-                    insertP.setString(1, getName());
-                    insertP.setFloat(2, power);
-                    insertP.setLong(3, getGuildId());
-                    insertP.setInt(4, RRteamNumber);
-                    insertP.setInt(5, lane.ordinal());
-                    insertP.setLong(6, uid);
-                    insertP.setBoolean(7, registeredToRR);
-                    insertP.setBoolean(8, isDiscord);
-                    insertP.executeUpdate();
-                }
-            } catch(SQLException e) {
-                e.printStackTrace();
-                return false;
-            }
-            return true;
-        }
-        boolean setRRregistered(boolean b) {
-            try{
-                synchronized (updateRRreg) {
-                    updateRRreg.setBoolean(1, b);
-                    updateRRreg.setFloat(2, power);
-                    updateRRreg.setLong(3, getGuildId());
-                    updateRRreg.setLong(4, getUid());
-                    updateRRreg.executeUpdate();
-                }
-            }catch(SQLException se) {
-                se.printStackTrace();
-            }
-            registeredToRR=b;
-            return true;
-        }
-
-        public boolean updateRRTeam(int teamNb) {
-            try {
-                synchronized (updateRRTeam) {
-                    updateRRTeam.setInt(1, teamNb);
-                    updateRRTeam.setString(2, getName());
-                    updateRRTeam.setLong(3, getGuildId());
-                    updateRRTeam.setLong(4, getUid());
-                    updateRRTeam.executeUpdate();
-                }
-            } catch(SQLException se) {
-                se.printStackTrace();
-                return false;
-            }
-            RRteamNumber =teamNb;
-            return true;
-        }
-        public void swap(Participant o) {
-            int curTeam= RRteamNumber;
-            updateRRTeam(o.RRteamNumber);
-            o.updateRRTeam(curTeam);
-        }
-        void decideSDLane(Server s) {
-            List<Participant> sdguys=s.sessions.values().stream().filter(p->p.lane!=SDPos.Undef).collect(Collectors.toList());
-            if (power < s.Sd.threshold) {
-                lane=SDPos.Right;
-            } else {
-                double left=0.0,center=0.0;
-                for(Participant p:sdguys) {
-                    if(p.lane==SDPos.Left) left+=p.power;
-                    else center+=p.power;
-                }
-                lane = left>center ? SDPos.Center : SDPos.Left;
-            }
-        }
-        boolean saveSD() {
-            try {
-                synchronized (updateSDLane) {
-                    updateSDLane.setInt(1, lane.ordinal());
-                    updateSDLane.setFloat(2, power);
-                    updateSDLane.setLong(3, getGuildId());
-                    updateSDLane.setLong(4, getUid());
-                    updateSDLane.executeUpdate();
-                }
-            } catch(SQLException se) {
-                se.printStackTrace();
-                return false;
-            }
-            return true;
-        }
-
-        public double getPower() { return power;}
-    }
 
     // class to draw teams on RR map
     private static class RRmapTeam {

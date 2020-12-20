@@ -28,12 +28,6 @@ jar {
         configurations.compileClasspath.collect { it.isDirectory()? it :zipTree(it)}
     }
 }
-/*
-task copyToLib(type: Copy) {
-    into "$buildDir/libs"
-    from(configurations.runtimeClasspath)
-}
-*/
 
 task stage(dependsOn: ['build', 'clean'])
 build.mustRunAfter clean

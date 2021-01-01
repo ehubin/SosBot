@@ -1,6 +1,5 @@
 
 import discord4j.common.util.Snowflake;
-import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.channel.MessageChannel;
@@ -143,7 +142,7 @@ public class Server {
         sb.append("\n```");
         return sb;
     }
-    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+
     boolean unregisterRR() {
         try {
             synchronized (_Q.deleteLocalRRParticipants) {
@@ -492,7 +491,7 @@ public class Server {
             teamSaved=saved;
             return true;
         }
-        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+
         boolean save() {
             try {
                 synchronized (_Q.updateRR) {
@@ -509,7 +508,6 @@ public class Server {
             }
             return true;
         }
-        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
         boolean close() {
             try {
                 synchronized (_Q.closeE) {
@@ -524,7 +522,7 @@ public class Server {
             active=false;
             return true;
         }
-        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+
         boolean reopen() {
             try {
                 synchronized (_Q.openE) {

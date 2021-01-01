@@ -1,4 +1,4 @@
-import discord4j.core.object.entity.Guild;
+
 import discord4j.core.object.entity.Member;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,12 +14,11 @@ public class Participant {
     private static final Logger _logger = LoggerFactory.getLogger(Participant.class);
     boolean isDiscord;
     long uid;
-    private String name;
+    final private String name; //for local users only
     Member member;
     Server server;
     float power=0.0f;
     boolean registeredToRR =false;
-    long timestamp=-1L;
     int RRteamNumber =-1;
     SDPos lane= SDPos.Undef;
     // create a discord-based participant
@@ -203,7 +202,6 @@ public class Participant {
 
     }
     static class data {
-        public boolean isR4;
         boolean registeredToRR;
         SDPos lane;
         float power;

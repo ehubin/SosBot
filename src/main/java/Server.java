@@ -1,35 +1,65 @@
+
 import discord4j.common.util.Snowflake;
+import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
+import discord4j.core.object.entity.channel.MessageChannel;
+import discord4j.core.retriever.EntityRetrievalStrategy;
+import discord4j.rest.util.Color;
+import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import reactor.core.publisher.Mono;
+
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
+
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.Date;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+enum SDPos { Undef,Left,Center,Right}
 public class Server {
     private static final Logger _logger = LoggerFactory.getLogger(Server.class);
 
+
+    private static final HashMap<Snowflake,Server> KnownServers=new HashMap<>();
+
+    private final HashMap<ChannelPartKey,Command> followUpCmd=new HashMap<>();
     Guild guild;
-    pingBot.RREvent RRevent,newRRevent;
-    pingBot.SDEvent Sd;
-    HashMap<Long, Participant> sessions = new HashMap<>();
+    Snowflake R4roleId=null;
+    RREvent RRevent,newRRevent;
+    SDEvent Sd;
+    protected HashMap<Long, Participant> sessions = new HashMap<>();
 
     public Server(Guild guild) {
         this.guild=guild;
-        RRevent= new pingBot.RREvent(guild);
-        newRRevent= new pingBot.RREvent(guild);
+        RRevent= new RREvent(guild);
+        newRRevent= new RREvent(guild);
+    }
+
+    public static Mono<Server> getServerFromId(Snowflake id) {
+        if(!KnownServers.containsKey(id)) {
+            return SosBot.getDiscordGateway().getGuildById(id).flatMap(g->{
+                Server newOne=new Server(g);
+                KnownServers.put(id,newOne);
+                Mono<Void> dbInit=newOne.initFromDB();
+                return dbInit.then(Mono.just(newOne));
+            });
+        }
+        return Mono.just(KnownServers.get(id));
     }
 
     public long getId() {
         return guild.getId().asLong();
     }
+
     List<Participant> getRegisteredRRparticipants() {
         return  sessions.values().stream().filter(i -> i.registeredToRR)
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
@@ -37,7 +67,7 @@ public class Server {
 
     }
     Stream<Participant> getRegisteredSDparticipants() {
-        return  sessions.values().stream().filter(i -> i.lane != pingBot.SDPos.Undef)
+        return  sessions.values().stream().filter(i -> i.lane != SDPos.Undef)
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed());
     }
 
@@ -100,7 +130,7 @@ public class Server {
 
     StringBuilder getSDLanesString() {
         final StringBuilder sb=new StringBuilder("```");
-        final AtomicReference<pingBot.SDPos> lane= new AtomicReference<>(pingBot.SDPos.Undef);
+        final AtomicReference<SDPos> lane= new AtomicReference<>(SDPos.Undef);
         getRegisteredSDparticipants().sorted(Comparator.comparing((Participant p) -> p.lane.ordinal()).reversed()
                 .thenComparing(p -> p.power).reversed()).forEachOrdered(p -> {
             if(!p.lane.equals(lane.get())) {
@@ -109,9 +139,11 @@ public class Server {
             }
             sb.append(p.getName()).append(" (").append(p.power).append(")\n");
         });
+        if(sb.length()==3) sb.append("No-one registered yet");
         sb.append("\n```");
         return sb;
     }
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     boolean unregisterRR() {
         try {
             synchronized (_Q.deleteLocalRRParticipants) {
@@ -124,34 +156,39 @@ public class Server {
             }
         }catch(SQLException se) {
             se.printStackTrace();
+            SosBot.checkDBConnection();
             return false;
         }
-        sessions.values().removeIf(p->p.getGuildId()==getId() && !p.isDiscord && p.registeredToRR && p.lane== pingBot.SDPos.Undef);
+        sessions.values().removeIf(p->p.getGuildId()==getId() && !p.isDiscord && p.registeredToRR && p.lane== SDPos.Undef);
         for(Participant p:sessions.values()) {
             if(p.isDiscord && p.getGuildId()==getId()) p.registeredToRR=false;
         }
         return true;
     }
     Participant createNewDiscordParticipant(Member m) {
-        Participant newby = new Participant(m,guild);
-        if(newby.save()) {
+        Participant newby = new Participant(m,this);
+        if(newby.create()) {
             sessions.put(newby.uid,newby);
             return newby;
+        } else {
+            _logger.error("Database issue while creating user "+m.getDisplayName());
+            SosBot.checkDBConnection();
+            return null;
         }
-        return null;
     }
     @SuppressWarnings("SameParameterValue")
     Participant createRRParticipant(String name, float power, boolean rr) {
-        Participant newbie = new Participant(name,guild);
+        Participant newbie = new Participant(name,this);
         newbie.setRRregistered(rr);
         newbie.power=power;
-        if(newbie.save()) {
+        if(newbie.create()) {
             sessions.put(newbie.uid,newbie);
             return newbie;
         }
         return null;
     }
-    void initFromDB() {
+    Mono<Void> initFromDB() {
+        final Map<Long,Participant.data> newDiscordMembers= new HashMap<>();
         try {
             ResultSet rs;
             synchronized (_Q.selectRRevent) {
@@ -159,22 +196,22 @@ public class Server {
                 rs = _Q.selectRRevent.executeQuery();
             }
             if(rs.next()) { // read first event
-                pingBot.RREvent e=new pingBot.RREvent(guild);
+                RREvent e=new RREvent(guild);
                 e.date=rs.getTimestamp("rrdate");
                 e.active=rs.getBoolean("active");
                 e.teamSaved=rs.getBoolean("teamsaved");
                 RRevent = e;
 
-                pingBot.SDEvent se = new pingBot.SDEvent(guild);
+                SDEvent se = new SDEvent(guild);
                 se.active = rs.getBoolean("sdactive");
                 se.threshold = rs.getFloat("sdthreshold");
                 Sd = se;
 
             } else { //server is not in db
-                RRevent=new pingBot.RREvent(guild);
+                RRevent=new RREvent(guild);
                 // first time event with empty DB is inactive
                 RRevent.active=false;
-                Sd = new pingBot.SDEvent(guild);
+                Sd = new SDEvent(guild);
                 Sd.active=false;
                 synchronized (_Q.createServer) {
                     PreparedStatement createServer=_Q.createServer;
@@ -187,6 +224,8 @@ public class Server {
                     createServer.executeUpdate();
                 }
             }
+            updateDiscordServerAtFirstConnection();
+
             synchronized (_Q.selectParticipants) {
                 _Q.selectParticipants.setLong(1, getId());
                 rs = _Q.selectParticipants.executeQuery();
@@ -194,37 +233,124 @@ public class Server {
                     long uid = rs.getLong("uid");
                     Participant p = sessions.get(uid);
                     if (p == null) {
-                        boolean isDiscord = rs.getBoolean("isdiscord");
-                        if (isDiscord) {
-                            Member m = guild.getMemberById(Snowflake.of(uid)).onErrorContinue((t, e) -> t.printStackTrace()).block(pingBot.BLOCK);
-                            if (m == null) {
-                                System.err.println("Error retrieving member for " + uid);
-                                continue;
-                            }
-                            p = new Participant(m, guild);
-                        } else {
-                            p = new Participant(rs.getString("name"), uid, guild);
-                        }
-                        sessions.put(uid, p);
 
+                        boolean isDiscord = rs.getBoolean("isdiscord");
+                        final boolean regToRR = rs.getBoolean("rr");
+                        final float pow= rs.getFloat("power");
+                        final int RRteamNumber = rs.getInt("team");
+                        final SDPos lane = SDPos.values()[rs.getInt("lane")];
+                        if (isDiscord) {
+                            Participant.data pd = new Participant.data();
+                            pd.lane=lane;
+                            pd.power=pow;
+                            pd.registeredToRR=regToRR;
+                            pd.RRteam=RRteamNumber;
+                            newDiscordMembers.put(uid,pd);
+                        } else { // non discord participant
+                            p = new Participant(rs.getString("name"), uid, this);
+                            p.registeredToRR = regToRR;
+                            p.power = pow;
+                            p.RRteamNumber =RRteamNumber;
+                            p.lane = lane;
+                            sessions.put(uid, p);
+                        }
                     }
-                    p.registeredToRR = rs.getBoolean("rr");
-                    p.power = rs.getFloat("power");
-                    p.RRteamNumber = rs.getInt("team");
-                    p.lane = pingBot.SDPos.values()[rs.getInt("lane")];
+
                 }
+
             }
 
         } catch(SQLException e) {
             e.printStackTrace();
+            SosBot.checkDBConnection();
         }
+        //merge DB and discord data
+        return guild.getMembers(EntityRetrievalStrategy.REST).doOnNext(m->{
+            long uid=m.getId().asLong();
+            _logger.info("Discord uid "+uid+", "+m.getDisplayName());
+            Participant p;
+            Participant.data pd;
+            if(newDiscordMembers.containsKey(uid)) {
+                p=new Participant(m,this);
+                pd=newDiscordMembers.get(uid);
+                p.lane=pd.lane;
+                p.RRteamNumber=pd.RRteam;
+                p.power=pd.power;
+                p.registeredToRR=pd.registeredToRR;
+                sessions.put(uid,p);
+                newDiscordMembers.remove(uid);
+            } else { // user is in discord and not in DB (to be created later when he interacts)
+                _logger.warn("Not yet in DB"+m.getDisplayName());
+            }
+
+        }).thenEmpty(Mono.fromRunnable(() -> {
+            for(long id:newDiscordMembers.keySet()) { // these users are in DB but not in discord
+                _logger.warn("To be removed from DB "+id);
+                if(Participant.delete(id,getId())) sessions.remove(id);
+            }
+        }));
+
+
     }
 
-    public Participant createSDParticipant(String name, float pow, pingBot.SDPos lane) {
-        Participant newbie = new Participant(name,guild);
+    private void updateDiscordServerAtFirstConnection() {
+            AtomicBoolean foundRR = new AtomicBoolean(false);
+            AtomicBoolean foundSC = new AtomicBoolean(false);
+            AtomicReference<Snowflake> parentId=new AtomicReference<>();
+            guild.getChannels().subscribe(c->{
+                //System.out.println(c.getName()+" "+c.getType()+" "+c.getPosition());
+                if(c.getName().equals(ReservoirRaidCommands.name)) foundRR.set(true);
+                else if(c.getName().equals(ShowdownCommands.name)) foundSC.set(true);
+                else if(c.getName().equalsIgnoreCase("text channels")) {
+                    //System.out.println("found parent");
+                    parentId.set(c.getId());
+                }
+            });
+            if(!foundRR.get()) {
+                System.out.println("Creating reservoir raid channel for "+guild.getName());
+                guild.createTextChannel(c->{
+                    c.setName(ReservoirRaidCommands.name);
+                    c.setTopic("Channel for reservoir raid registration");
+                    if(parentId.get() != null) c.setParentId(parentId.get());
+                }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
+
+            }
+            if(!foundSC.get()) {
+                System.out.println("Creating showdown channel for "+guild.getName());
+                guild.createTextChannel(c->{
+                    c.setName(ShowdownCommands.name);
+                    c.setTopic("Channel for showdown registration");
+                    if(parentId.get() != null) c.setParentId(parentId.get());
+                }).doOnError(Throwable::printStackTrace).subscribe(System.out::println);
+
+            }
+            //create R4 role if it does not already exists
+            AtomicBoolean foundR4 = new AtomicBoolean(false);
+            guild.getRoles().subscribe(r->{
+                if(r.getName().equals("R4")) {
+                    foundR4.set(true);
+                    R4roleId = r.getId();
+                }
+
+            });
+            if(!foundR4.get()) {
+                System.out.println("Creating R4 role for "+guild.getName());
+                guild.createRole(rcs -> {
+                    rcs.setName("R4");
+                    rcs.setColor(Color.MOON_YELLOW);
+                    rcs.setReason("This is a role for R4 members");
+                }).doOnError(Throwable::printStackTrace).subscribe((r)->{
+                    System.out.println(r);
+                    R4roleId=r.getId();
+                });
+            }
+    }
+
+    public Participant createSDParticipant(String name, float pow, SDPos lane) {
+        Participant newbie = new Participant(name,this);
         newbie.lane=lane;
         newbie.power=pow;
-        if(newbie.save()) {
+        if(newbie.create()) {
             sessions.put(newbie.uid,newbie);
             return newbie;
         }
@@ -233,17 +359,187 @@ public class Server {
 
     private static queries _Q;
     static void initQueries(Connection db) throws SQLException { _Q=new queries(db); }
+
+    public Participant getParticipant(Member m) {
+        Participant res= sessions.get(m.getId().asLong());
+        if(res==null) { // new user
+            res = createNewDiscordParticipant(m);
+        }
+        return res;
+    }
+    // returns follow-up command for participant p in that server
+    public Command getFollowUpCmd(ChannelPartKey k) {
+        return followUpCmd.get(k);
+    }
+
+    public void setFollowUpCmd(MessageChannel channel,Participant p, Command fup) {
+        followUpCmd.put(new ChannelPartKey(channel,p),fup);
+    }
+    public void removeFollowupCmd(MessageChannel ch,Participant p) { followUpCmd.remove(new ChannelPartKey(ch,p));}
+
+    public Participant getExistingParticipant(Snowflake memberId) {
+        return sessions.get(memberId.asLong());
+    }
+
     private static class queries  {
         final PreparedStatement deleteLocalRRParticipants,deleteLocalSDParticipants ,RRunregAll,selectParticipants,
-                selectRRevent,createServer;
+                selectRRevent,createServer,updateRR,closeE,openE,RRsaveTeam,SDsave,SDunregAll;
         queries(Connection dbConnection)  throws SQLException {
             selectParticipants  = dbConnection.prepareStatement("SELECT * FROM members where server=?");
             deleteLocalRRParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane='0' and rr='t' ");
             deleteLocalSDParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane!='0' and rr='f' ");
+            SDunregAll = dbConnection.prepareStatement("UPDATE  members set lane='0' where server=?");
             RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
             selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
             createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdactive,sdthreshold,rrdate) VALUES(?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+            updateRR = dbConnection.prepareStatement("UPDATE servers set rrdate=?,active=?,teamsaved=? where server=?", Statement.RETURN_GENERATED_KEYS);
+            closeE = dbConnection.prepareStatement("UPDATE servers set active='f' where server=?", Statement.RETURN_GENERATED_KEYS);
+            openE = dbConnection.prepareStatement("UPDATE servers set active='t' where server=?", Statement.RETURN_GENERATED_KEYS);
+            RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=?");
+            SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
         }
 
     }
+    static class ChannelPartKey {
+        public ChannelPartKey(MessageChannel c, Participant p) {
+            partUid=p.uid; channelId=c.getId().asLong();
+        }
+        long channelId, partUid;
+        @Override
+        public boolean equals(Object o) {
+            if(!(o instanceof ChannelPartKey)) return false;
+            ChannelPartKey cpk=(ChannelPartKey) o;
+            return cpk.channelId==channelId && cpk.partUid == partUid;
+        }
+        @Override
+        public int hashCode() {
+            HashCodeBuilder hcb = new HashCodeBuilder();
+            return hcb.append(channelId).append(partUid).hashCode();
+        }
+    }
+    static class SDEvent {
+        boolean active=true;
+        LocalDateTime start;
+        float threshold;
+        Guild guild;
+        SDEvent(Guild g) {
+            guild=g;
+            start=LocalDateTime.now();
+        }
+        boolean save() {
+            try{
+                synchronized (_Q.SDsave) {
+                    _Q.SDsave.setBoolean(1, active);
+                    _Q.SDsave.setFloat(2, threshold);
+                    _Q.SDsave.setLong(3, guild.getId().asLong());
+                    _Q.SDsave.executeUpdate();
+                }
+            } catch(SQLException e) {
+                e.printStackTrace();
+                SosBot.checkDBConnection();
+                return false;
+            }
+            return true;
+        }
+        boolean cleanUp() {
+            try {
+                synchronized(_Q.deleteLocalSDParticipants) {
+                    _Q.deleteLocalSDParticipants.setLong(1,guild.getId().asLong());
+                    _Q.deleteLocalSDParticipants.executeUpdate();
+                }
+                synchronized(_Q.SDunregAll) {
+                    _Q.SDunregAll.setLong(1,guild.getId().asLong());
+                    _Q.SDunregAll.executeUpdate();
+                }
+
+            } catch(SQLException e) {
+                _logger.error("SD user cleanup error",e);
+                SosBot.checkDBConnection();
+                return false;
+            }
+            Server s=KnownServers.get(guild.getId());
+            s.sessions.values().removeIf((p)->{
+                if(p.isDiscord) { p.lane=SDPos.Undef; return false;}
+                return true;
+            });
+            return true;
+        }
+
+    }
+
+    static class RREvent {
+        static SimpleDateFormat df=new SimpleDateFormat("EEEE dd MMM h a z",Locale.US);
+        static{df.setTimeZone(TimeZone.getTimeZone("UTC"));}
+        public Date date=new Date(0);
+        boolean active=true;
+        boolean teamSaved=false;
+        Guild guild;
+        int nbTeams=-1;
+        public RREvent(Guild g) { this.guild=g;}
+        public String toString() { return df.format(date)+(active?"":"*");}
+        boolean saveTeams(boolean saved) {
+            try {
+                synchronized (_Q.RRsaveTeam) {
+                    _Q.RRsaveTeam.setBoolean(1, saved);
+                    _Q.RRsaveTeam.setLong(2, guild.getId().asLong());
+                    _Q.RRsaveTeam.executeUpdate();
+                }
+            } catch(SQLException se) {
+                se.printStackTrace();
+                SosBot.checkDBConnection();
+                return false;
+            }
+            teamSaved=saved;
+            return true;
+        }
+        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+        boolean save() {
+            try {
+                synchronized (_Q.updateRR) {
+                    _Q.updateRR.setTimestamp(1, new Timestamp(date.getTime()));
+                    _Q.updateRR.setBoolean(2, active);
+                    _Q.updateRR.setBoolean(3, teamSaved);
+                    _Q.updateRR.setLong(4, guild.getId().asLong());
+                    _Q.updateRR.executeUpdate();
+                }
+            } catch(SQLException ex) {
+                ex.printStackTrace();
+                SosBot.checkDBConnection();
+                return false;
+            }
+            return true;
+        }
+        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+        boolean close() {
+            try {
+                synchronized (_Q.closeE) {
+                    _Q.closeE.setLong(1, guild.getId().asLong());
+                    _Q.closeE.executeUpdate();
+                }
+            } catch(SQLException ex) {
+                ex.printStackTrace();
+                SosBot.checkDBConnection();
+                return false;
+            }
+            active=false;
+            return true;
+        }
+        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+        boolean reopen() {
+            try {
+                synchronized (_Q.openE) {
+                    _Q.openE.setLong(1, guild.getId().asLong());
+                    _Q.openE.executeUpdate();
+                }
+            } catch(SQLException ex) {
+                ex.printStackTrace();
+                SosBot.checkDBConnection();
+                return false;
+            }
+            active=true;
+            return true;
+        }
+    }
 }
+
+

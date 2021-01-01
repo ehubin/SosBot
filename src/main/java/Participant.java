@@ -1,4 +1,3 @@
-import com.joestelmach.natty.Parser;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import org.slf4j.Logger;
@@ -15,32 +14,32 @@ public class Participant {
     private static final Logger _logger = LoggerFactory.getLogger(Participant.class);
     boolean isDiscord;
     long uid;
-    String name;
-    final Member member;
-    Guild guild;
+    private String name;
+    Member member;
+    Server server;
     float power=0.0f;
     boolean registeredToRR =false;
-    Step step=Step.begin;
     long timestamp=-1L;
     int RRteamNumber =-1;
-    pingBot.SDPos lane= pingBot.SDPos.Undef;
-    void setStep(Step s) { step=s; timestamp=System.currentTimeMillis();}
-    boolean timedOut() { return (System.currentTimeMillis()-timestamp) > 60000 && step != Step.begin;}
+    SDPos lane= SDPos.Undef;
     // create a discord-based participant
-    Participant(Member m,Guild g) {
-        member=m; guild=g;isDiscord=true;
-        name=member.getDisplayName();
+    Participant(Member m,Server s) {
+        member=m; server=s;isDiscord=true;
+        name=null;
         uid=member.getId().asLong();
     }
-    //create a non-discord participant from first time
-    Participant(String n,Guild g) {
-        member=null; guild=g;isDiscord=false;
+    //create a non-discord participant for the first time
+    Participant(String n,Server s) {
+        member=null; server=s;isDiscord=false;
         name=n;
         uid=generateUID(n);
     }
+    public boolean isR4() {
+        return isDiscord && member.getRoleIds().contains(server.R4roleId);
+    }
     //create a non-discord participant from existing uid
-    Participant(String n,long uid,Guild g) {
-        member=null; guild=g;isDiscord=false;
+    Participant(String n,long uid,Server s) {
+        member=null; server=s;isDiscord=false;
         name=n;
         this.uid=uid;
     }
@@ -53,11 +52,11 @@ public class Participant {
     }
 
     public String toString() { return getName()+"\t"+power;}
-    public String getName() { return name;}
-    public long getGuildId() { return guild.getId().asLong();}
+    public String getName() { return isDiscord? member.getDisplayName():name;}
+    public long getGuildId() { return server.getId();}
     public long getUid() { return uid;}
 
-    boolean save() {
+    boolean create() {
         try {
             synchronized (_Q.insertP) {
                 PreparedStatement insertP=_Q.insertP;
@@ -73,9 +72,47 @@ public class Participant {
             }
         } catch(SQLException e) {
             e.printStackTrace();
+            SosBot.checkDBConnection();
             return false;
         }
         return true;
+    }
+
+    boolean update() {
+        try {
+            synchronized (_Q.updateP) {
+                PreparedStatement updateP=_Q.updateP;
+                updateP.setString(1, getName());
+                updateP.setFloat(2, power);
+                updateP.setInt(3, RRteamNumber);
+                updateP.setInt(4, lane.ordinal());
+                updateP.setBoolean(5, registeredToRR);
+                updateP.setBoolean(6, isDiscord);
+                updateP.setLong(7, uid);
+                updateP.setLong(8, getGuildId());
+                updateP.executeUpdate();
+            }
+        } catch(SQLException e) {
+            e.printStackTrace();
+            SosBot.checkDBConnection();
+            return false;
+        }
+        return true;
+    }
+
+    static  boolean delete(long uid,long serverid) {
+        synchronized(_Q.deleteOne) {
+            try {
+                _Q.deleteOne.setLong(1, serverid);
+                _Q.deleteOne.setLong(2, uid);
+                _Q.deleteOne.executeUpdate();
+            } catch(SQLException s) {
+                _logger.error("Error while deleting "+uid,s);
+                SosBot.checkDBConnection();
+                return false;
+            }
+            return true;
+        }
     }
     boolean setRRregistered(boolean b) {
         try{
@@ -89,6 +126,8 @@ public class Participant {
             }
         }catch(SQLException se) {
             se.printStackTrace();
+            SosBot.checkDBConnection();
+            return false;
         }
         registeredToRR=b;
         return true;
@@ -106,27 +145,27 @@ public class Participant {
             }
         } catch(SQLException se) {
             se.printStackTrace();
+            SosBot.checkDBConnection();
             return false;
         }
         RRteamNumber =teamNb;
         return true;
     }
-    public void swap(Participant o) {
+    public boolean swap(Participant o) {
         int curTeam= RRteamNumber;
-        updateRRTeam(o.RRteamNumber);
-        o.updateRRTeam(curTeam);
+        return (updateRRTeam(o.RRteamNumber)&&o.updateRRTeam(curTeam));
     }
     void decideSDLane(Server s) {
-        List<Participant> sdguys=s.sessions.values().stream().filter(p->p.lane!= pingBot.SDPos.Undef).collect(Collectors.toList());
+        List<Participant> sdguys=s.sessions.values().stream().filter(p->p.lane!= SDPos.Undef).collect(Collectors.toList());
         if (power < s.Sd.threshold) {
-            lane= pingBot.SDPos.Right;
+            lane= SDPos.Right;
         } else {
             double left=0.0,center=0.0;
             for(Participant p:sdguys) {
-                if(p.lane== pingBot.SDPos.Left) left+=p.power;
+                if(p.lane== SDPos.Left) left+=p.power;
                 else center+=p.power;
             }
-            lane = left>center ? pingBot.SDPos.Center : pingBot.SDPos.Left;
+            lane = left>center ? SDPos.Center : SDPos.Left;
         }
     }
     boolean saveSD() {
@@ -141,6 +180,7 @@ public class Participant {
             }
         } catch(SQLException se) {
             se.printStackTrace();
+            SosBot.checkDBConnection();
             return false;
         }
         return true;
@@ -151,14 +191,22 @@ public class Participant {
     private static queries _Q;
     static void initQueries(Connection db) throws SQLException { _Q=new Participant.queries(db); }
     private static class queries  {
-        final PreparedStatement insertP,updateRRreg,updateRRTeam,updateSDLane;
+        final PreparedStatement insertP,updateP,updateRRreg,updateRRTeam,updateSDLane,deleteOne;
         queries(Connection db)  throws SQLException {
             insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
-
+            updateP = db.prepareStatement("UPDATE members set name=?,power=?,team=?,lane=?,rr=?,isdiscord=? where uid=? and server=?", Statement.RETURN_GENERATED_KEYS);
             updateRRreg =  db.prepareStatement("UPDATE  members set rr=?,power=? where server=? and uid=?");
             updateRRTeam =  db.prepareStatement("UPDATE  members set team=?,name=? where server=? and uid=?");
             updateSDLane =  db.prepareStatement("UPDATE  members set lane=?,power=? where server=? and uid=?");
+            deleteOne = db.prepareStatement("DELETE  from members  where server=? and uid=?");
         }
 
+    }
+    static class data {
+        public boolean isR4;
+        boolean registeredToRR;
+        SDPos lane;
+        float power;
+        int RRteam;
     }
 }

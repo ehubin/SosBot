@@ -10,6 +10,8 @@ repositories {
 }
 
 dependencies {
+    compileOnly 'org.projectlombok:lombok:1.18.16'
+    annotationProcessor 'org.projectlombok:lombok:1.18.16'
     //date parser Natty deps
     implementation('com.joestelmach:natty:0.13')
     implementation ('ch.qos.logback:logback-classic:1.2.3')

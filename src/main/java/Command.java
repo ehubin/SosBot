@@ -5,20 +5,26 @@ import discord4j.core.object.entity.channel.TextChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public abstract class Command {
-    protected static final Logger _logger = LoggerFactory.getLogger(Command.class);
 
+public abstract class Command {
+    @SuppressWarnings("RedundantSlf4jDefinition")
+    protected final static  Logger log = LoggerFactory.getLogger(Command.class);
 
     static HashMap<String, List<Command>> ChannelCmds=new HashMap<>();
 
-    static void registerCmds(String channelName,List<Command> cmds) {ChannelCmds.put(channelName,cmds); }
+    static void registerCmds(String channelName,List<Command> cmds) {
+        for(Command c:cmds) assert(c.isBaseCommand());
+        ChannelCmds.put(channelName,cmds);
+    }
     BaseData bd=null;
+    Supplier<Command> factory=null;
+    Command me() {return this;}
 
     abstract protected void execute(String content, Participant participant, MessageChannel channel, Server curServer); //called when command is executed
     //true if this command can be executed directly false if it is follow-up from a basic one
@@ -29,8 +35,12 @@ public abstract class Command {
     public String getHelpText(){ return bd!= null ? bd.helpText:"";}
     // true if only R4 can perform this command
     public boolean isR4Only() { return bd != null && bd.isR4Only;}
+    public Command getOne() { return factory==null? null:factory.get();}
     protected Command() {}
-    protected Command(BaseData bdata) { bd=bdata;}
+    // stateful base commands need to implement this constructor
+    protected Command(BaseData bdata,Supplier<Command> factory) { bd=bdata; this.factory=factory;}
+    // ok for stateless commands
+    protected Command(BaseData bdata) { bd=bdata; this.factory=this::me;}
     static class BaseData {
         boolean isR4Only;
         String syntax;
@@ -60,11 +70,11 @@ public abstract class Command {
                             channel.createMessage("Sorry, the \"" + c.getSyntax()+"\" command is for R4s only.").subscribe();
                             return;
                         }
-                        c.execute(content,participant,channel,curServer);
+                        c.getOne().execute(content,participant,channel,curServer);
                         return;
                     }
             }
-            _logger.info("No matching command for: " + content);
+            log.info("No matching command for: " + content);
         }
     }
 
@@ -74,6 +84,8 @@ public abstract class Command {
 abstract class SimpleCommand extends Command {
     protected String cmdStr;
     protected boolean matches(String content) { return content.equalsIgnoreCase(cmdStr);}
+    // stateful base commands need to implement this constructor
+    protected SimpleCommand(String cmdStr,BaseData bd,Supplier<Command> factory) { super(bd,factory);this.cmdStr=cmdStr;}
     protected SimpleCommand(String cmdStr,BaseData bd) { super(bd);this.cmdStr=cmdStr;}
     protected SimpleCommand(String cmdStr) {this.cmdStr=cmdStr;}
 }
@@ -89,11 +101,17 @@ abstract class RegexCommand extends Command {
     final protected Pattern pattern;
     Matcher m=null;
     String content=null;
+    // stateful base commands need to implement this constructor
+    protected RegexCommand(String regex,BaseData bd,Supplier<Command> factory) {
+        super(bd,factory);
+        this.pattern=Pattern.compile(regex);
+    }
     protected RegexCommand(String regex,BaseData bd) {
         super(bd);
         this.pattern=Pattern.compile(regex);
     }
-
+    // stateful base commands need to implement this constructor
+    protected RegexCommand(Pattern p, BaseData bd,Supplier<Command> factory) {  super(bd,factory);this.pattern=p; }
     protected RegexCommand(Pattern p, BaseData bd) {  super(bd);this.pattern=p; }
     protected RegexCommand(Pattern p) { this.pattern=p; }
     protected RegexCommand(String regexp) { this.pattern=Pattern.compile(regexp); }
@@ -106,7 +124,7 @@ abstract class RegexCommand extends Command {
     @Override
     protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
         if(this.content==null || !this.content.equals(content)) {
-            _logger.error("Wrong regex execution on "+getSyntax());
+            log.error("Wrong regex execution on "+getSyntax());
             return;
         }
         execute(m,content,participant,channel,curServer);
@@ -114,12 +132,14 @@ abstract class RegexCommand extends Command {
 
     protected abstract void execute(Matcher ma,String content, Participant participant, MessageChannel channel, Server curServer);
 }
+class RecoverableError extends Error {
+    RecoverableError(String msg) { super(msg);}
+}
 
 class HelpCommand extends SimpleCommand {
     static final int space=4;
     HelpCommand() {
         super("help",new BaseData(false,"help","Provide a list of commands available on this channel"));
-
     }
     @Override
     protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
@@ -138,7 +158,7 @@ class HelpCommand extends SimpleCommand {
                 }
             }
             channel.createMessage(sb.append("```").toString())
-                    .doOnError(t->_logger.error("Error sending message",t))
+                    .doOnError(t-> log.error("Error sending message",t))
                     .subscribe();
         }
     }

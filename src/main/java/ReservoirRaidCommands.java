@@ -371,7 +371,7 @@ public class ReservoirRaidCommands {
                 return;
             }
             float pow=Float.parseFloat(ma.group(2).trim());
-            _logger.info("registering "  + ma.group(1) + "| " + ma.group(2));
+            log.info("registering "  + ma.group(1) + "| " + ma.group(2));
             Participant p = curServer.createRRParticipant(ma.group(1),pow,true);
             if(p==null) {
                 channel.createMessage("Unexpected error while trying to create participant "+ma.group(1)).subscribe();

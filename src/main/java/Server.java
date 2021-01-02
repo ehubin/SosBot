@@ -1,18 +1,22 @@
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import discord4j.common.util.Snowflake;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.core.retriever.EntityRetrievalStrategy;
 import discord4j.rest.util.Color;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import reactor.core.publisher.Mono;
 
 import java.sql.*;
 
+import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -24,10 +28,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 enum SDPos { Undef,Left,Center,Right}
+
+@Slf4j
 public class Server {
-    private static final Logger _logger = LoggerFactory.getLogger(Server.class);
-
-
     private static final HashMap<Snowflake,Server> KnownServers=new HashMap<>();
 
     private final HashMap<ChannelPartKey,Command> followUpCmd=new HashMap<>();
@@ -170,7 +173,7 @@ public class Server {
             sessions.put(newby.uid,newby);
             return newby;
         } else {
-            _logger.error("Database issue while creating user "+m.getDisplayName());
+            log.error("Database issue while creating user "+m.getDisplayName());
             SosBot.checkDBConnection();
             return null;
         }
@@ -202,8 +205,9 @@ public class Server {
                 RRevent = e;
 
                 SDEvent se = new SDEvent(guild);
-                se.active = rs.getBoolean("sdactive");
                 se.threshold = rs.getFloat("sdthreshold");
+                se.initLaneStatus(rs.getString("sdlanedata"));
+                se.initEnemyStatus(rs.getString("enemylanedata"));
                 Sd = se;
 
             } else { //server is not in db
@@ -211,15 +215,13 @@ public class Server {
                 // first time event with empty DB is inactive
                 RRevent.active=false;
                 Sd = new SDEvent(guild);
-                Sd.active=false;
                 synchronized (_Q.createServer) {
                     PreparedStatement createServer=_Q.createServer;
                     createServer.setLong(1, getId());
                     createServer.setBoolean(2, RRevent.active);
                     createServer.setBoolean(3, RRevent.teamSaved);
-                    createServer.setBoolean(4, Sd.active);
-                    createServer.setFloat(5, Sd.threshold);
-                    createServer.setTimestamp(6, new Timestamp(RRevent.date.getTime()));
+                    createServer.setFloat(4, Sd.threshold);
+                    createServer.setTimestamp(5, new Timestamp(RRevent.date.getTime()));
                     createServer.executeUpdate();
                 }
             }
@@ -266,7 +268,7 @@ public class Server {
         //merge DB and discord data
         return guild.getMembers(EntityRetrievalStrategy.REST).doOnNext(m->{
             long uid=m.getId().asLong();
-            _logger.info("Discord uid "+uid+", "+m.getDisplayName());
+            log.info("Discord uid "+uid+", "+m.getDisplayName());
             Participant p;
             Participant.data pd;
             if(newDiscordMembers.containsKey(uid)) {
@@ -279,12 +281,14 @@ public class Server {
                 sessions.put(uid,p);
                 newDiscordMembers.remove(uid);
             } else { // user is in discord and not in DB (to be created later when he interacts)
-                _logger.warn("Not yet in DB"+m.getDisplayName());
+                log.warn("Not yet in DB"+m.getDisplayName());
+                Participant newOne=new Participant(m,this);
+                if(!newOne.create()) log.error("Error creating "+m.getDisplayName()+" in DB");
             }
 
         }).thenEmpty(Mono.fromRunnable(() -> {
             for(long id:newDiscordMembers.keySet()) { // these users are in DB but not in discord
-                _logger.warn("To be removed from DB "+id);
+                log.warn("To be removed from DB "+id);
                 if(Participant.delete(id,getId())) sessions.remove(id);
             }
         }));
@@ -390,12 +394,12 @@ public class Server {
             SDunregAll = dbConnection.prepareStatement("UPDATE  members set lane='0' where server=?");
             RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
             selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
-            createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdactive,sdthreshold,rrdate) VALUES(?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+            createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdthreshold,rrdate) VALUES(?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
             updateRR = dbConnection.prepareStatement("UPDATE servers set rrdate=?,active=?,teamsaved=? where server=?", Statement.RETURN_GENERATED_KEYS);
             closeE = dbConnection.prepareStatement("UPDATE servers set active='f' where server=?", Statement.RETURN_GENERATED_KEYS);
             openE = dbConnection.prepareStatement("UPDATE servers set active='t' where server=?", Statement.RETURN_GENERATED_KEYS);
             RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=?");
-            SDsave = dbConnection.prepareStatement("UPDATE  servers set sdactive=?,sdthreshold=? where server=?");
+            SDsave = dbConnection.prepareStatement("UPDATE  servers set sdthreshold=?,sdlanedata=?,enemylanedata=? where server=?");
         }
 
     }
@@ -416,21 +420,75 @@ public class Server {
             return hcb.append(channelId).append(partUid).hashCode();
         }
     }
+    @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY, getterVisibility = JsonAutoDetect.Visibility.NONE, setterVisibility = JsonAutoDetect.Visibility.NONE)
+    static class SDLaneStatus implements Comparable<SDLaneStatus> {
+        int nb;
+        double pow;
+        double realPow;
+        @Override
+        public int compareTo(SDLaneStatus o) {
+            return Double.compare(realPow, o.realPow);
+        }
+        public String toString() {
+            return nb+":"+pow+"("+realPow+")";
+        }
+    }
     static class SDEvent {
-        boolean active=true;
+        static ObjectMapper objectMapper = new ObjectMapper();
         LocalDateTime start;
         float threshold;
         Guild guild;
+        Map<SDPos,SDLaneStatus> laneStatus=new HashMap<>();
+        Map<SDPos,SDLaneStatus> enemyStatus=new HashMap<>();
+        boolean registrationActive() {
+            return laneStatus.isEmpty();
+        }
+        String getLaneStatus() {
+            try {
+                return objectMapper.writeValueAsString(laneStatus);
+            } catch (JsonProcessingException e) {
+                log.error("serialize error ",e);
+            }
+            return "";
+        }
+        String getEnemyStatus() {
+            try {
+                return objectMapper.writeValueAsString(enemyStatus);
+            } catch (JsonProcessingException e) {
+                log.error("serialize error ",e);
+            }
+            return "";
+        }
+        void initLaneStatus(String dbs) {
+            try {
+                if(dbs!= null && dbs.length()>0) laneStatus=objectMapper.readValue(dbs, new TypeReference<>() {
+                });
+            } catch (JsonProcessingException e) {
+                log.error("deserialize error ",e);
+            }
+        }
+        void initEnemyStatus(String dbs) {
+            try {
+                if(dbs!= null && dbs.length()>0) enemyStatus=objectMapper.readValue(dbs,new TypeReference<>(){});
+            } catch (JsonProcessingException e) {
+                log.error("deserialize error ",e);
+            }
+        }
         SDEvent(Guild g) {
             guild=g;
             start=LocalDateTime.now();
+            laneStatus.put(SDPos.Left,new SDLaneStatus());
+            laneStatus.put(SDPos.Center,new SDLaneStatus());
+            laneStatus.put(SDPos.Right,new SDLaneStatus());
         }
         boolean save() {
             try{
                 synchronized (_Q.SDsave) {
-                    _Q.SDsave.setBoolean(1, active);
-                    _Q.SDsave.setFloat(2, threshold);
-                    _Q.SDsave.setLong(3, guild.getId().asLong());
+                    _Q.SDsave.setFloat(1, threshold);
+                    _Q.SDsave.setString(2, getLaneStatus());
+                    _Q.SDsave.setString(3, getEnemyStatus());
+                    _Q.SDsave.setLong(4, guild.getId().asLong());
+
                     _Q.SDsave.executeUpdate();
                 }
             } catch(SQLException e) {
@@ -452,7 +510,7 @@ public class Server {
                 }
 
             } catch(SQLException e) {
-                _logger.error("SD user cleanup error",e);
+                log.error("SD user cleanup error",e);
                 SosBot.checkDBConnection();
                 return false;
             }
@@ -464,6 +522,59 @@ public class Server {
             return true;
         }
 
+        @SuppressWarnings("ConstantConditions")
+        public StringBuilder computeBestMatching(StringBuilder sb) {
+            if(sb==null) sb=new StringBuilder();
+            int[] mapping = new int[3];
+            SDLaneStatus[] mylanes=laneStatus.values().stream().sorted().toArray(SDLaneStatus[]::new);
+            SDLaneStatus[] hislanes=enemyStatus.values().stream().sorted().toArray(SDLaneStatus[]::new);
+            if(mylanes[0].realPow > 1.05*hislanes[0].realPow &&
+                    mylanes[1].realPow > 1.05*hislanes[1].realPow &&
+                    mylanes[2].realPow > 1.05*hislanes[2].realPow) {
+                log.info("Easy win");
+                mapping[0]=0;
+                mapping[1]=1;
+                mapping[2]=2;
+            } else if (mylanes[2].realPow > 0.95*hislanes[1].realPow &&
+                    mylanes[1].realPow > 0.95*hislanes[0].realPow
+            ) {
+                log.info("close win");
+                mapping[0]=2;
+                mapping[1]=0;
+                mapping[2]=1;
+            } else {
+                log.info("Impossible win");
+                mapping[0]=2;
+                mapping[1]=1;
+                mapping[2]=0;
+            }
+            sb.append(" Us     vs    Them\n");
+            for(int i=0;i<3;++i) {
+                appendPair(sb,mylanes[i],hislanes[mapping[i]]);
+            }
+            return sb;
+        }
+        private static final DecimalFormat df1 = new DecimalFormat("000.0K");
+        private void appendPair(StringBuilder sb,SDLaneStatus us,SDLaneStatus them) {
+            sb.append(" ").append(us.nb).append("/20        ").append(them.nb).append("/20\n")
+                    .append(df1.format(us.pow).replaceAll("\\G0", " "))
+                    .append("        ").append((int)Math.round(them.pow*1000)).append("\n\n");
+        }
+        // get expected power of one participant (by averaging current team)
+        public int getAvgParticipantPower() {
+            int nb=0;
+            double pow=0.0;
+            for(SDLaneStatus sdl:laneStatus.values()) {
+                nb+= sdl.nb;
+                pow += sdl.pow;
+            }
+            if(nb==0 || pow==0.0) return 1000;
+            return (int)Math.round(1000.*pow/nb);
+        }
+        // get expected power( in thousands) of a team of nbPart taking average power of current team as a reference
+        public double getExpectedPower(int nbPart) {
+            return nbPart*getAvgParticipantPower()/1000.;
+        }
     }
 
     static class RREvent {

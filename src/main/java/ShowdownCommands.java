@@ -1,7 +1,6 @@
 import discord4j.core.object.entity.channel.MessageChannel;
 
 import java.util.*;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -106,6 +105,7 @@ public class ShowdownCommands {
         void executeNext(Participant p, MessageChannel channel, Server curServer) {
             if(laneIt.hasNext()) {
                 SDPos next = laneIt.next();
+                curServer.Sd.laneStatus.put(next,new Server.SDLaneStatus());
                 curServer.setFollowUpCmd(channel, p, new input(next));
                 channel.createMessage("provide **"+next+"** lane Participant numbers then total power (eg 23 29.5)").subscribe();
             } else {

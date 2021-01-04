@@ -56,6 +56,7 @@ public class SosBot {
         // register command callbacks
         ShowdownCommands.init();
         ReservoirRaidCommands.init();
+        TrapCommands.init();
 
         theGw.on(MessageCreateEvent.class).map(SosBot::processMessage).onErrorContinue((error, event)->{
             try {

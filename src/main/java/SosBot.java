@@ -52,6 +52,7 @@ public class SosBot {
         theGw.on(ReadyEvent.class).subscribe((re)->{
            log.info("Ready!");
            myId=re.getSelf().getId();
+           Notification.initFromDb();
         });
         // register command callbacks
         ShowdownCommands.init();
@@ -194,6 +195,7 @@ public class SosBot {
         AnalysisCenter.initQueries(theDbCOnnection);
         Participant.initQueries(theDbCOnnection);
         Server.initQueries(theDbCOnnection);
+        Notification.initQueries(theDbCOnnection);
     }
     static boolean checkDBConnection() {
         try {

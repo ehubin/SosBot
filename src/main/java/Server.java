@@ -47,7 +47,9 @@ public class Server {
         RRevent= new RREvent(guild);
         newRRevent= new RREvent(guild);
     }
-
+    public static Mono<Server> getServerFromId(long id) {
+        return getServerFromId(Snowflake.of(id));
+    }
     public static Mono<Server> getServerFromId(Snowflake id) {
         if(!KnownServers.containsKey(id)) {
             return SosBot.getDiscordGateway().getGuildById(id).flatMap(g->{

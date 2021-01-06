@@ -53,7 +53,16 @@ public class Server {
     }
     public static Mono<Server> getServerFromId(Snowflake id) {
         if(!KnownServers.containsKey(id)) {
-            return SosBot.getDiscordGateway().getGuildById(id).flatMap(g->{
+            return SosBot.getDiscordGateway().getGuildById(id).onErrorResume(e->{
+                if(e.getMessage().matches("GET.*message=Missing Access.*")) {
+                    log.warn("ignoring guild permission error for id="+id+ " not a big deal");
+                    return Mono.empty();
+                } else {
+                    log.error("Unexpected error while trying to retrieve guild data for id="+id);
+                    return Mono.error(e);
+                }
+            })
+                    .flatMap(g->{
                 Server newOne=new Server(g);
                 KnownServers.put(id,newOne);
                 Mono<Void> dbInit=newOne.initFromDB();

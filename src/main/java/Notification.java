@@ -83,7 +83,7 @@ public  class Notification {
                     log.info("sending trap notif for minus "+in.before.toString());
 
                 },
-                Duration.ofMinutes(2)));
+                Duration.ofDays(2)));
     }
 
     public static int cancelAllNotifs(NotifType type, Server curServer) {

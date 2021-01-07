@@ -12,7 +12,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
-enum NotifType { SDcloseReg,RRcloseReg,Trap,ACDanger}
+enum NotifType { SDcloseReg,SDnextWave,RRcloseReg,Trap,ACDanger}
 @Slf4j
 public  class Notification {
     static final CronScheduler scheduler=CronScheduler.create(Duration.ofMinutes(1));
@@ -71,11 +71,10 @@ public  class Notification {
         }
 
     }
-
+    static final String trapHelp = "Everyone should create one rally with best heroes. Try to schedule the rallies so that they are evenly spread across the first 5 minutes.\n Then you join rallies with as many marches as possible as long as you have 3 heroes available.";
+    static final DateTimeFormatter hhmm=DateTimeFormatter.ofPattern("hh:mm a z").withZone(ZoneId.of("UTC"));
     // initializes all known notifications
     static {
-        final String trapHelp = "Everyone should create one rally with best heroes. Try to schedule the rallies so that they are evenly spread across the first 5 minutes.\n Then you join rallies with as many marches as possible as long as you have 3 heroes available.";
-        final DateTimeFormatter hhmm=DateTimeFormatter.ofPattern("hh:mm a z").withZone(ZoneId.of("UTC"));
         notifMap.put(NotifType.Trap,new Notification(
                 new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
                 (in)->{
@@ -84,6 +83,13 @@ public  class Notification {
 
                 },
                 Duration.ofDays(2)));
+        notifMap.put(NotifType.SDnextWave,new Notification(
+            new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+                (in) ->{
+                    in.server.SDChannel.createMessage("@R4 showdown swapping phase will close in "+format(in.before)+" at "+hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute").subscribe();
+                    log.info("sending SD next wave notif for minus "+in.before.toString());
+                }
+        ));
     }
 
     public static int cancelAllNotifs(NotifType type, Server curServer) {

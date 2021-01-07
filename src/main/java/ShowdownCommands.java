@@ -1,5 +1,7 @@
+import com.joestelmach.natty.DateGroup;
 import discord4j.core.object.entity.channel.MessageChannel;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -214,7 +216,8 @@ public class ShowdownCommands {
                 }
                 StringBuilder sb =new StringBuilder("```Best configuration to win is:\n");
                 curServer.Sd.computeBestMatching(sb);
-                curServer.removeFollowupCmd(channel,p);
+                sb.append("Now enter the utc time of the next phase (e.g 11:00)\n");
+                curServer.setFollowUpCmd(channel,p,time);
                 channel.createMessage(sb.append("```").toString()).subscribe();
             }
 
@@ -256,6 +259,20 @@ public class ShowdownCommands {
                 }
             }
         }
+        final Command time = new FollowupCommand() {
+            @Override
+            protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
+                List<DateGroup> list=ReservoirRaidCommands.getParser().parse(content.trim());
+                if(list!= null && list.size()==1 && list.get(0).getDates().size()==1) {
+                    Instant swapTime=Instant.ofEpochMilli(list.get(0).getDates().get(0).getTime());
+                    Notification.scheduleNotif(NotifType.SDnextWave,curServer,swapTime);
+                    curServer.removeFollowupCmd(channel,participant);
+                    channel.createMessage("You are done, R4 will be reminded when swapping needs to happen!").subscribe();
+                } else {
+                    channel.createMessage("incorrect time format <"+content+"> please enter a correct one").subscribe();
+                }
+            }
+        };
     }
 
     static Command lanesCmd = new SimpleCommand("lanes",

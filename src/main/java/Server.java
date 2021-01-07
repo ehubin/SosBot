@@ -9,7 +9,6 @@ import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.core.object.entity.channel.TextChannel;
 import discord4j.core.retriever.EntityRetrievalStrategy;
-import discord4j.rest.http.client.ClientException;
 import discord4j.rest.util.Color;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -23,7 +22,6 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -214,7 +212,7 @@ public class Server {
             }
             if(rs.next()) { // read first event
                 RREvent e=new RREvent(guild);
-                e.date=rs.getTimestamp("rrdate");
+                e.date=rs.getTimestamp("rrdate").toInstant();
                 e.active=rs.getBoolean("active");
                 e.teamSaved=rs.getBoolean("teamsaved");
                 RRevent = e;
@@ -236,7 +234,7 @@ public class Server {
                     createServer.setBoolean(2, RRevent.active);
                     createServer.setBoolean(3, RRevent.teamSaved);
                     createServer.setFloat(4, Sd.threshold);
-                    createServer.setTimestamp(5, new Timestamp(RRevent.date.getTime()));
+                    createServer.setTimestamp(5, new Timestamp(RRevent.date.toEpochMilli()));
                     createServer.executeUpdate();
                 }
             }
@@ -620,7 +618,7 @@ public class Server {
     static class RREvent {
         static SimpleDateFormat df=new SimpleDateFormat("EEEE dd MMM h a z",Locale.US);
         static{df.setTimeZone(TimeZone.getTimeZone("UTC"));}
-        public Date date=new Date(0);
+        public Instant date= Instant.EPOCH;
         boolean active=true;
         boolean teamSaved=false;
         Guild guild;
@@ -646,7 +644,7 @@ public class Server {
         boolean save() {
             try {
                 synchronized (_Q.updateRR) {
-                    _Q.updateRR.setTimestamp(1, new Timestamp(date.getTime()));
+                    _Q.updateRR.setTimestamp(1, new Timestamp(date.toEpochMilli()));
                     _Q.updateRR.setBoolean(2, active);
                     _Q.updateRR.setBoolean(3, teamSaved);
                     _Q.updateRR.setLong(4, guild.getId().asLong());

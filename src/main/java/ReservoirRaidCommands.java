@@ -1,5 +1,3 @@
-import com.joestelmach.natty.DateGroup;
-import com.joestelmach.natty.Parser;
 import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.rest.util.Color;
 import reactor.core.publisher.Mono;
@@ -12,6 +10,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.text.ParseException;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -36,13 +35,6 @@ public class ReservoirRaidCommands {
         Command.registerCmds(name,commands);
     }
 
-    static Parser dateParser;
-    public static Parser getParser() {
-        if(dateParser==null) {
-            dateParser=new Parser(TimeZone.getTimeZone("UTC"));
-        }
-        return dateParser;
-    }
     static Command registerCmd = new SimpleCommand("register",
             new Command.BaseData(false,"register","Registers yourself to next reservoir raid event")) {
         @Override
@@ -283,12 +275,10 @@ public class ReservoirRaidCommands {
         final Command getTime = new FollowupCommand() {
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
-                List<DateGroup> dg=getParser().parse(content.trim());
-                if(dg.size()==1 && dg.get(0).getDates().size()==1) {
-                    curServer.newRRevent.date=dg.get(0).getDates().get(0);
+                try {
                     curServer.setFollowUpCmd(channel,participant,yesNo);
-                    channel.createMessage("do you confirm you want to create new RR event \"" + curServer.newRRevent + "\" (yes/no)").subscribe();
-                } else {
+                    curServer.newRRevent.date=DateParser.getParser().parseOne(content);
+                } catch(ParseException e) {
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("Ambiguous date "+content.trim()).subscribe();
                 }

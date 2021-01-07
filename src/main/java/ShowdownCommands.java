@@ -1,6 +1,5 @@
-import com.joestelmach.natty.DateGroup;
 import discord4j.core.object.entity.channel.MessageChannel;
-
+import java.text.ParseException;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -262,14 +261,13 @@ public class ShowdownCommands {
         final Command time = new FollowupCommand() {
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
-                List<DateGroup> list=ReservoirRaidCommands.getParser().parse(content.trim());
-                if(list!= null && list.size()==1 && list.get(0).getDates().size()==1) {
-                    Instant swapTime=Instant.ofEpochMilli(list.get(0).getDates().get(0).getTime());
+                try {
+                    Instant swapTime=DateParser.getParser().parseOne(content.trim());
                     Notification.cancelAllNotifs(NotifType.SDnextWave,curServer);
                     Notification.scheduleNotif(NotifType.SDnextWave,curServer,swapTime);
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("You are done, R4 will be reminded when swapping needs to happen!").subscribe();
-                } else {
+                } catch(ParseException e) {
                     channel.createMessage("incorrect time format <"+content+"> please enter a correct one").subscribe();
                 }
             }

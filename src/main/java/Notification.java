@@ -113,8 +113,7 @@ public  class Notification {
         }
 
         public void register(Instant basetime) {
-            Set<Instant> timings=notifIndex.get(this);
-            if(timings==null) {timings=new HashSet<Instant>(); notifIndex.put(this,timings);}
+            Set<Instant> timings = notifIndex.computeIfAbsent(this, k -> new HashSet<>());
             timings.add(basetime);
         }
         public void unregister(Instant basetime) {
@@ -137,7 +136,7 @@ public  class Notification {
                 activeNotifs.put(snt,new ArrayList<>());
                 snt.removeFromDB();
             }
-            notifIndex.put(this,new HashSet<Instant>());
+            notifIndex.put(this,new HashSet<>());
             return res;
         }
     }

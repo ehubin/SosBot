@@ -124,7 +124,10 @@ public  class Notification {
         public int cancelAll() {
             int res=0;
             Set<Instant> existing=notifIndex.get(this);
-            if(existing==null || existing.size()<=0) return 0;
+            if(existing==null || existing.size()<=0) {
+                log.info("No Notif to delete for "+this);
+                return 0;
+            }
             for(Instant i:existing) {
                 ++res;
                 ServerNotifTime snt=new ServerNotifTime(srv,type,i);

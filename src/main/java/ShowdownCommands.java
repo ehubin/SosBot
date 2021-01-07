@@ -265,6 +265,7 @@ public class ShowdownCommands {
                 List<DateGroup> list=ReservoirRaidCommands.getParser().parse(content.trim());
                 if(list!= null && list.size()==1 && list.get(0).getDates().size()==1) {
                     Instant swapTime=Instant.ofEpochMilli(list.get(0).getDates().get(0).getTime());
+                    Notification.cancelAllNotifs(NotifType.SDnextWave,curServer);
                     Notification.scheduleNotif(NotifType.SDnextWave,curServer,swapTime);
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("You are done, R4 will be reminded when swapping needs to happen!").subscribe();

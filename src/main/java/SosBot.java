@@ -52,13 +52,14 @@ public class SosBot {
         theGw.on(ReadyEvent.class).subscribe((re)->{
            log.info("Ready!");
            myId=re.getSelf().getId();
+           ChannelAndCommands.initAll();
+           SosBot.initAll();
            Notification.initFromDb();
         });
-        // register command callbacks
-        ShowdownCommands.init();
-        ReservoirRaidCommands.init();
-        TrapCommands.init();
+        theGw.onDisconnect().block();
+    } //end of main
 
+    private static void initAll() {
         theGw.on(MessageCreateEvent.class).map(SosBot::processMessage).onErrorContinue((error, event)->{
             try {
                 log.error("Uncaught exception in process method",error);
@@ -95,9 +96,7 @@ public class SosBot {
                 log.error("Double error ",t);
             }
         }).subscribe();
-        theGw.onDisconnect().block();
-    } //end of main
-
+    }
     private static MemberUpdateEvent ProcessUpdateMember(MemberUpdateEvent e) {
         Server.getServerFromId(e.getGuildId()).subscribe(
                 srv->{

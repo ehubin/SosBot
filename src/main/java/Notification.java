@@ -4,7 +4,6 @@ import org.apache.commons.lang.builder.HashCodeBuilder;
 
 import java.sql.*;
 import java.time.*;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -12,13 +11,13 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
-enum NotifType { SDcloseReg,SDnextWave,RRcloseReg,Trap,ACDanger}
+enum NotifType { SDcloseReg,SDnextWave,RRcloseReg, RRevent, defendAC, Trap}
 @Slf4j
 public  class Notification {
     static final CronScheduler scheduler=CronScheduler.create(Duration.ofMinutes(1));
-    static final HashMap<NotifType,Notification> notifMap=new HashMap<>();
-    static final HashMap<ServerNotifTime, List<Future<?>>> activeNotifs = new HashMap<>();
-    static final HashMap<ServerNotif, Set<Instant>> notifIndex = new HashMap<>();
+    static private final HashMap<NotifType,Notification> notifMap=new HashMap<>();
+    static private final HashMap<ServerNotifTime, List<Future<?>>> activeNotifs = new HashMap<>();
+    static private final HashMap<ServerNotif, Set<Instant>> notifIndex = new HashMap<>();
 
     //*********************Fields***************************************************************
     Duration[] reminderPattern;
@@ -26,17 +25,18 @@ public  class Notification {
     Duration period=null;
 
 
-    private Notification(Duration[] reminderPattern,Consumer<NotificationInput> callback) {
+    public Notification(Duration[] reminderPattern, Consumer<NotificationInput> callback) {
         this.reminderPattern=reminderPattern;
         this.callback = callback;
     }
-    private Notification(Duration[] reminderPattern,Consumer<NotificationInput> callback,Duration period) {
+    public Notification(Duration[] reminderPattern, Consumer<NotificationInput> callback, Duration period) {
         this.reminderPattern=reminderPattern;
         this.callback = callback;
         this.period=period;
     }
 
-    static Set<Instant> getNotifs(NotifType type,Server srv) {
+    @SuppressWarnings("SameParameterValue")
+    static Set<Instant> getNotifs(NotifType type, Server srv) {
         Set<Instant> res = notifIndex.get(new ServerNotif(srv,type));
         if(res==null) res=Set.of();
         final Duration theperiod =notifMap.get(type).period;
@@ -53,50 +53,19 @@ public  class Notification {
         }
         return res;
     }
+    @SuppressWarnings("SameParameterValue")
     static Notification getNotificationDescription(NotifType type) {
         return notifMap.get(type);
     }
-    static void cancel(Server s,NotifType t,Instant i) {
-        ServerNotifTime snt= new ServerNotifTime(s,t,i);
-        List<Future<?>> tasks = activeNotifs.remove(snt);
-        Set<Instant> basetimes=notifIndex.get(new ServerNotif(s,t));
-        if(basetimes != null) basetimes.removeIf((inst)->inst.equals(i));
-        snt.removeFromDB();
-        if(tasks==null) {
-            log.warn("No tasks found for "+t+" event in server "+s.guild.getName());
-            return;
-        }
-        for(Future<?> task:tasks) {
-            task.cancel(false);
-        }
 
-    }
-    static final String trapHelp = "Everyone should create one rally with best heroes. Try to schedule the rallies so that they are evenly spread across the first 5 minutes.\n Then you join rallies with as many marches as possible as long as you have 3 heroes available.";
-    static final DateTimeFormatter hhmm=DateTimeFormatter.ofPattern("hh:mm a z").withZone(ZoneId.of("UTC"));
-    // initializes all known notifications
-    static {
-        notifMap.put(NotifType.Trap,new Notification(
-                new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
-                (in)->{
-                    in.server.TrapChannel.createMessage("@everyone Trap will take place in "+format(in.before)+" at "+hhmm.format(in.basetime)+"\n"+trapHelp).subscribe();
-                    log.info("sending trap notif for minus "+in.before.toString());
-
-                },
-                Duration.ofDays(2)));
-        notifMap.put(NotifType.SDnextWave,new Notification(
-            new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
-                (in) ->{
-                    in.server.SDChannel.createMessage("@R4 showdown swapping phase will close in "+format(in.before)+" at "+hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute").subscribe();
-                    log.info("sending SD next wave notif for minus "+in.before.toString());
-                }
-        ));
+    static void registerNotifType(NotifType t,Notification notif) {
+        notifMap.put(t,notif);
     }
 
     public static int cancelAllNotifs(NotifType type, Server curServer) {
         ServerNotif sn=new ServerNotif(curServer,type);
         return sn.cancelAll();
     }
-
     //allows to index notifications for a given Server/type of notification
     static class ServerNotif {
         ServerNotif(Server s, NotifType t) {srv=s;type=t; }
@@ -197,17 +166,22 @@ public  class Notification {
             }
         }
     }
-
-
-
     static void scheduleNotif(NotifType type,Server srv,Instant basetime) {
-        scheduleNotif(type,srv,basetime,true);
+        scheduleNotif(type,srv,basetime,true,true);
     }
-    static void scheduleNotif(NotifType type,Server srv,Instant basetime,boolean updateDB) {
+    @SuppressWarnings({"SameParameterValue", "unused"})
+    static void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean cancelPrevious) {
+        scheduleNotif(type,srv,basetime,true,cancelPrevious);
+    }
+    static void scheduleNotif(NotifType type,Server srv,Instant basetime,boolean updateDB,boolean cancelPrevious) {
         Notification notif=notifMap.get(type);
         if(notif==null) {
             log.error("Notification not found for " + type);
             return;
+        }
+        ServerNotif sn=new ServerNotif(srv,type);
+        if(cancelPrevious) {
+            sn.cancelAll();
         }
         ServerNotifTime sno = new ServerNotifTime(srv,type,basetime);
         List<Future<?>> activeTasks = activeNotifs.get(sno);
@@ -241,7 +215,7 @@ public  class Notification {
             for(Duration d:notif.reminderPattern) {
                 Instant event = Instant.from(basetime.minus(d));
                 if (now.isAfter(event)) {
-                    log.warn("Dropping " + type + " notif  for duratioin minus " + format(d));
+                    log.warn("Dropping " + type + " notif  for duratioin minus " + Util.format(d));
                 } else {
                     NotificationInput in = new NotificationInput(d, basetime, srv);
                     taskList.add(scheduler.scheduleAt(Instant.from(basetime.minus(d)), () -> {
@@ -316,7 +290,7 @@ public  class Notification {
                 while(rs.next()) {
                     final Instant inst = rs.getTimestamp("basetime").toInstant();
                     final NotifType nt=NotifType.valueOf(rs.getString("notif"));
-                    Server.getServerFromId(rs.getLong("server")).subscribe((s)-> scheduleNotif(nt,s,inst,false));
+                    Server.getServerFromId(rs.getLong("server")).subscribe((s)-> scheduleNotif(nt,s,inst,false,false));
 
                 }
             }
@@ -325,9 +299,6 @@ public  class Notification {
 
         }
     }
-
-
-
     private static queries _Q;
     static void initQueries(Connection db) throws SQLException { _Q=new queries(db); }
     private static class queries {
@@ -346,10 +317,5 @@ public  class Notification {
         Instant basetime;
         Server server;
     }
-    static String format(Duration d) {
-        long s=d.toSeconds();
-        return s>3600 ? ( s%3600 != 0 ? String.format("%d hour%s %02d min", s / 3600,(s>7200?"s":""), (s % 3600) / 60)
-                 :String.format("%d hour%s", s / 3600,(s>7200?"s":"")))
-                 : String.format("%02d min", (s % 3600) / 60);
-    }
+
 }

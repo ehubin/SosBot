@@ -22,6 +22,7 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -39,7 +40,6 @@ public class Server {
     Snowflake R4roleId=null;
     RREvent RRevent,newRRevent;
     SDEvent Sd;
-    TextChannel TrapChannel,RRChannel,SDChannel;
     protected HashMap<Long, Participant> sessions = new HashMap<>();
 
     public Server(Guild guild) {
@@ -309,82 +309,58 @@ public class Server {
 
     }
     private void updateDiscordServerAtFirstConnection() {
-            AtomicBoolean foundRR = new AtomicBoolean(false);
-            AtomicBoolean foundSC = new AtomicBoolean(false);
-            AtomicBoolean foundTrap = new AtomicBoolean(false);
-            AtomicReference<Snowflake> parentId=new AtomicReference<>();
-            guild.getChannels().subscribe(c->{
-                //System.out.println(c.getName()+" "+c.getType()+" "+c.getPosition());
-                if(c.getName().equals(ReservoirRaidCommands.name)) {
-                    foundRR.set(true);
-                    RRChannel=c instanceof TextChannel? (TextChannel)c:null;
+        Set<ChannelAndCommands> clist=ChannelAndCommands.getAllChannels();
+        AtomicBoolean[] found=new AtomicBoolean[clist.size()];
+        Arrays.setAll(found,(i)->new AtomicBoolean());
+
+        AtomicReference<Snowflake> parentId=new AtomicReference<>();
+        guild.getChannels().subscribe(c->{
+            int i=0;
+            for(ChannelAndCommands cac:clist) {
+                if(c.getName().equals(cac.getDefaulName())) {
+                    found[i].set(true);
+                    cac.setChannel(c instanceof TextChannel? (TextChannel)c:null);
                 }
-                else if(c.getName().equals(ShowdownCommands.name)) {
-                    foundSC.set(true);
-                    SDChannel=c instanceof TextChannel? (TextChannel)c:null;
-                }
-                else if(c.getName().equals(TrapCommands.name))  {
-                    foundTrap.set(true);
-                    TrapChannel=c instanceof TextChannel? (TextChannel)c:null;
-                }
-                else if(c.getName().equalsIgnoreCase("text channels")) {
-                    //System.out.println("found parent");
-                    parentId.set(c.getId());
-                }
-            });
-            if(!foundRR.get()) {
+                ++i;
+            }
+            if(c.getName().equalsIgnoreCase("text channels")) {
+                //System.out.println("found parent");
+                parentId.set(c.getId());
+            }
+        });
+        int i=0;
+        for(ChannelAndCommands cac:clist) {
+            if(!found[i++].get()) {
                 guild.createTextChannel(c->{
-                    c.setName(ReservoirRaidCommands.name);
-                    c.setTopic("Channel for reservoir raid registration");
+                    c.setName(cac.getDefaulName());
+                    c.setTopic(cac.getTopic());
                     if(parentId.get() != null) c.setParentId(parentId.get());
                 }).doOnError(Throwable::printStackTrace).subscribe((c)->{
-                    RRChannel=c;
-                    log.info("RR channel successfully created for "+guild.getName());
+                    cac.setChannel(c);
+                    log.info(cac.getDefaulName()+" channel successfully created for "+guild.getName());
                 });
-
             }
-            if(!foundSC.get()) {
-                guild.createTextChannel(c->{
-                    c.setName(ShowdownCommands.name);
-                    c.setTopic("Channel for showdown registration");
-                    if(parentId.get() != null) c.setParentId(parentId.get());
-                }).doOnError(Throwable::printStackTrace).subscribe((c)->{
-                    SDChannel=c;
-                    log.info("Showdown channel successfully created for "+guild.getName());
-                });
-
-            }
-            if(!foundTrap.get()) {
-            guild.createTextChannel(c->{
-                c.setName(TrapCommands.name);
-                c.setTopic("Channel for Trap announcements");
-                if(parentId.get() != null) c.setParentId(parentId.get());
-            }).doOnError(Throwable::printStackTrace).subscribe((c)->{
-                TrapChannel=c;
-                log.info("Trap channel successfully created for "+guild.getName());
-            });
-
         }
-            //create R4 role if it does not already exists
-            AtomicBoolean foundR4 = new AtomicBoolean(false);
-            guild.getRoles().subscribe(r->{
-                if(r.getName().equals("R4")) {
-                    foundR4.set(true);
-                    R4roleId = r.getId();
-                }
-
-            });
-            if(!foundR4.get()) {
-                System.out.println("Creating R4 role for "+guild.getName());
-                guild.createRole(rcs -> {
-                    rcs.setName("R4");
-                    rcs.setColor(Color.MOON_YELLOW);
-                    rcs.setReason("This is a role for R4 members");
-                }).doOnError(Throwable::printStackTrace).subscribe((r)->{
-                    System.out.println(r);
-                    R4roleId=r.getId();
-                });
+        //create R4 role if it does not already exists
+        AtomicBoolean foundR4 = new AtomicBoolean(false);
+        guild.getRoles().subscribe(r->{
+            if(r.getName().equals("R4")) {
+                foundR4.set(true);
+                R4roleId = r.getId();
             }
+
+        });
+        if(!foundR4.get()) {
+            System.out.println("Creating R4 role for "+guild.getName());
+            guild.createRole(rcs -> {
+                rcs.setName("R4");
+                rcs.setColor(Color.MOON_YELLOW);
+                rcs.setReason("This is a role for R4 members");
+            }).doOnError(Throwable::printStackTrace).subscribe((r)->{
+                System.out.println(r);
+                R4roleId=r.getId();
+            });
+        }
     }
 
     public Participant createSDParticipant(String name, float pow, SDPos lane) {
@@ -624,7 +600,7 @@ public class Server {
         Guild guild;
         int nbTeams=-1;
         public RREvent(Guild g) { this.guild=g;}
-        public String toString() { return df.format(date)+(active?"":"*");}
+        public String toString() { return df.format(Date.from(date))+(active?"":"*");}
         boolean saveTeams(boolean saved) {
             try {
                 synchronized (_Q.RRsaveTeam) {

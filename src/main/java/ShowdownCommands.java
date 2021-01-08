@@ -1,23 +1,44 @@
 import discord4j.core.object.entity.channel.MessageChannel;
+import lombok.extern.slf4j.Slf4j;
+
 import java.text.ParseException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class ShowdownCommands {
+@Slf4j
+public class ShowdownCommands extends ChannelAndCommands {
     static final String name="\u2694showdown\u2694";
+    static final String topic="This channel is for Showdown event management! Hope to see you there at next registration!";
     static final Random random= new Random();
-    static void init() {
-        ArrayList<Command> commands=new ArrayList<>();
-        commands.add(new HelpCommand());
-        commands.add(registerCmd);
-        commands.add(openCmd);
-        commands.add(lanesCmd);
-        commands.add(r4regCmd);
-        commands.add(new closeCmd());
-        commands.add(new nextWaveCmd());
-        Command.registerCmds(name,commands);
+    static final String SDRegText ="Please go and register if you have not done so.\n Even if you have, now could be the good time to register even more troops (e.g by activating massive march talent) or by registering more powerful troops trained since your first registration";
+
+    ShowdownCommands() {
+        super(name,topic);
+        register(new HelpCommand());
+        register(registerCmd);
+        register(openCmd);
+        register(lanesCmd);
+        register(r4regCmd);
+        register(new closeCmd());
+        register(new nextWaveCmd());
+        init();
+        Notification.registerNotifType(NotifType.SDnextWave,new Notification(
+                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+                (in) ->{
+                    getChannel().createMessage("@R4 showdown swapping phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute").subscribe();
+                    log.info("sending SD next wave notif for minus "+in.before.toString());
+                }
+        ));
+        Notification.registerNotifType(NotifType.SDcloseReg,new Notification(
+                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+                (in) ->{
+                    getChannel().createMessage("@everyone showdown registration phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+SDRegText).subscribe();
+                    log.info("sending SD next wave notif for minus "+in.before.toString());
+                }
+        ));
     }
 
     static Command registerCmd = new SimpleCommand("register",
@@ -69,18 +90,35 @@ public class ShowdownCommands {
                                                         "Opens showdown event with given power limit")) {
         @Override
         protected void execute(Matcher ma, String content, Participant p, MessageChannel channel, Server curServer) {
-            float pow=Float.parseFloat(ma.group(1));
-            System.out.println("opening showdown with power threshold "  + pow);
-            curServer.Sd.threshold=pow;
-            curServer.Sd.laneStatus.clear();
-            curServer.Sd.enemyStatus.clear();
-            if(curServer.Sd.save()) {
-                curServer.Sd.cleanUp();
-                channel.createMessage("Successfully opened Showdown with power threshold at " + pow).subscribe();
-            } else {
-                channel.createMessage("Unexpected error while trying to open showdown").subscribe();
-            }
+            curServer.Sd.threshold=Float.parseFloat(ma.group(1));
+            curServer.setFollowUpCmd(channel, p, lastOne);
+            channel.createMessage("Please enter date and time of Registration closure (for notification purpose)").subscribe();
         }
+
+        final Command lastOne = new FollowupCommand() {
+            @Override
+            protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
+                Instant regTime;
+                try {
+                    regTime = Util.getParser().parseOne(content);
+                } catch (ParseException e) {
+                    channel.createMessage("Incorrect date time format <"+content+"> please re-enter correct one");
+                    return;
+                }
+                log.info("opening showdown with power threshold "  + curServer.Sd.threshold);
+
+                if(curServer.Sd.save()) {
+                    curServer.Sd.cleanUp();
+                    curServer.Sd.laneStatus.clear();
+                    curServer.Sd.enemyStatus.clear();
+                    Notification.scheduleNotif(NotifType.SDcloseReg,curServer,regTime);
+                    channel.createMessage("Successfully opened Showdown with power threshold at " + curServer.Sd.threshold).subscribe();
+                } else {
+                    channel.createMessage("Unexpected error while trying to open showdown").subscribe();
+                }
+                curServer.removeFollowupCmd(channel,participant);
+            }
+        };
     };
 
     static final Pattern intDoublePattern = Pattern.compile("(\\d+)\\s+(\\d+\\.?\\d*)");
@@ -262,8 +300,7 @@ public class ShowdownCommands {
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
                 try {
-                    Instant swapTime=DateParser.getParser().parseOne(content.trim());
-                    Notification.cancelAllNotifs(NotifType.SDnextWave,curServer);
+                    Instant swapTime= Util.getParser().parseOne(content.trim());
                     Notification.scheduleNotif(NotifType.SDnextWave,curServer,swapTime);
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("You are done, R4 will be reminded when swapping needs to happen!").subscribe();

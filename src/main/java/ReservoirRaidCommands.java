@@ -1,5 +1,7 @@
 import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.rest.util.Color;
+import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import javax.imageio.ImageIO;
@@ -11,30 +13,51 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.text.ParseException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public class ReservoirRaidCommands {
+@Slf4j
+public class ReservoirRaidCommands extends ChannelAndCommands{
     static final String name ="\uD83D\uDCA6reservoir-raid\uD83D\uDCA6";
-    static void init() {
-        ArrayList<Command> commands=new ArrayList<>();
-        commands.add(new HelpCommand());
-        commands.add(registerCmd);
-        commands.add(createCmd);
-        commands.add(closeCmd);
-        commands.add(reopenCmd);
-        commands.add(teamsCmd);
-        commands.add(swapCmd);
-        commands.add(showmapCmd);
-        commands.add(listCmd);
-        commands.add(r4regCmd);
-        commands.add(notifyCmd);
-        Command.registerCmds(name,commands);
-    }
+    static final String topic ="This channel is to keep track of reservoir raid event! Stay tuned!";
+    ReservoirRaidCommands() {
+        super(name,topic);
+        register(new HelpCommand());
+        register(registerCmd);
+        register(createCmd);
+        register(closeCmd);
+        register(reopenCmd);
+        register(teamsCmd);
+        register(swapCmd);
+        register(showmapCmd);
+        register(listCmd);
+        register(r4regCmd);
+        register(notifyCmd);
+        init();
 
+        Notification.registerNotifType(NotifType.RRcloseReg,new Notification(
+                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+                (in) ->{
+                    getChannel().createMessage("@everyone Reservoir raid registration closes in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Go and register yourself if you want to participate").subscribe();
+                    log.info("sending SD next wave notif for minus "+in.before.toString());
+                }
+        ));
+        Notification.registerNotifType(NotifType.RRevent,new Notification(
+                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+                (in) -> notifyRR(in.server).onErrorResume((e)-> {
+                    if (e instanceof RecoverableError) {
+                        log.error("RR notif error: "+e.getMessage());
+                        return Mono.empty();
+                    } else return Mono.error(e);
+                }).switchIfEmpty(Flux.empty().doOnComplete(() -> log.error("there were no elements")).cast(String.class))
+                        .reduce((s1, s2)->s1+", "+s2).doOnSuccess((s) ->{if(s!= null && s.length() >0) log.info("Sent RR notif to "+s);}).subscribe()
+        ));
+    }
     static Command registerCmd = new SimpleCommand("register",
             new Command.BaseData(false,"register","Registers yourself to next reservoir raid event")) {
         @Override
@@ -277,7 +300,7 @@ public class ReservoirRaidCommands {
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
                 try {
                     curServer.setFollowUpCmd(channel,participant,yesNo);
-                    curServer.newRRevent.date=DateParser.getParser().parseOne(content);
+                    curServer.newRRevent.date= Util.getParser().parseOne(content);
                 } catch(ParseException e) {
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("Ambiguous date "+content.trim()).subscribe();
@@ -288,24 +311,45 @@ public class ReservoirRaidCommands {
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
                 if(content.trim().equalsIgnoreCase("yes")) {
-                    if (!curServer.newRRevent.save()) {
-                        channel.createMessage("Failure while saving RR event").subscribe();
-                        curServer.removeFollowupCmd(channel,participant);
-                        return;
-                    }
-                    curServer.RRevent = curServer.newRRevent;
-                    curServer.newRRevent = new Server.RREvent(curServer.guild);
-                    if (!curServer.unregisterRR()) {
-                        channel.createMessage("Unexpected error while updating participant status").subscribe();
-                        curServer.removeFollowupCmd(channel,participant);
-                        return;
-                    }
-                    curServer.removeFollowupCmd(channel,participant);
-                    channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").subscribe();
+                    curServer.setFollowUpCmd(channel,participant,lastOne);
+                    channel.createMessage("Good! now please enter date and time of the RR registration closure").subscribe();
+                } else {
+                    channel.createMessage("No worries enter it again").subscribe();
                 }
             }
         };
+        final Command lastOne = new FollowupCommand() {
+            @Override
+            protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
+                Instant regTime;
+                try {
+                    regTime= Util.getParser().parseOne(content);
+                } catch(ParseException e) {
+                    channel.createMessage("Incorrect date/time "+content+"please re-enter a correct one").subscribe();
+                    return;
+                }
+                if (!curServer.newRRevent.save()) {
+                    channel.createMessage("Failure while saving RR event").subscribe();
+                    curServer.removeFollowupCmd(channel,participant);
+                    return;
+                }
+                curServer.RRevent = curServer.newRRevent;
+                curServer.newRRevent = new Server.RREvent(curServer.guild);
+                if (!curServer.unregisterRR()) {
+                    channel.createMessage("Unexpected error while updating participant status").subscribe();
+                    curServer.removeFollowupCmd(channel,participant);
+                    return;
+                }
+                // create notifications
+                Notification.scheduleNotif(NotifType.RRcloseReg,curServer,regTime);
+
+                curServer.removeFollowupCmd(channel,participant);
+                channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").subscribe();
+            }
+        };
+
     };
+
     static Command swapCmd = new RegexCommand(Pattern.compile("swap\\s+(\\d).(\\d+)\\s+(\\d).(\\d+)",Pattern.CASE_INSENSITIVE),
             new Command.BaseData(true,"swap x.y z.t","Swaps player y in team x with player t in team z")) {
 
@@ -382,76 +426,73 @@ public class ReservoirRaidCommands {
                 channel.createMessage("You have to save teams and close registration before notifying people").subscribe();
                 return;
             }
-            ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
-            byte[] img;
-            BufferedImage tmpImage=RRmapTeam.getMapImage();
-            if(tmpImage==null) {
-                channel.createMessage("Unable to get Map image").subscribe();
-                return;
-            }
-            Graphics2D g2d = tmpImage.createGraphics();
-            String[] leaders = new String[teams.size()];
-            int i = 0;
-            for (ArrayList<Participant> t : teams) {
-                leaders[i++] = t.get(0).getName();
-            }
-            RRmapTeam.drawTeams(g2d, leaders);
-            try {
-                ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                ImageIO.write(tmpImage, "PNG", bos);
-                img = bos.toByteArray();
-            } catch (Exception e) {
-                e.printStackTrace();
-                return;
-            }
-            StringBuilder sb = new StringBuilder();
-            List<Mono<String>> notifs = new ArrayList<>();
-            for (ArrayList<Participant> t : teams) {
-                for (Participant p : t) {
-                    if (p.isDiscord && p.member != null) {
-                        sb.setLength(0);
-                        for (Participant pa : t) {
-                            if (p != pa) {
-                                sb.append(" - ").append(pa.getName()).append(" (").append(pa.power).append(")\n");
-                            }
-                        }
-                        final String teamMates = sb.toString();
-                        final String teamAssignment = t.get(0) == p ?
-                                "You are the leader of one of the " + teams.size() + " teams" :
-                                "You have been assigned to " + t.get(0).getName() + "'s team";
-
-                        Mono<String> notif =p.member.getPrivateChannel().flatMap((pc) -> {
-                            pc.createMessage(mcs -> {
-                                mcs.addFile("rrmap.png", new ByteArrayInputStream(img));
-                                mcs.setEmbed(ecs -> {
-                                    ecs.setDescription("Your Reservoir Raid info for " + curServer.RRevent);
-                                    ecs.addField(teamAssignment, "\u200b", false);
-                                    ecs.addField("Your team mates", teamMates, false);
-                                    ecs.addField("\u200b", "If you want to change to another team ask one of the R4s", false);
-                                    ecs.addField("Your attendance to the event is important! We cannot cancel your registration anymore. We count on you!", "\u200b", false);
-                                    ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW);
-                                });
-                            }).subscribe(null,
-                                    thr -> {
-                                        thr.printStackTrace();
-                                        System.err.println("Error while sending message to " + p.getName());
-                                    },
-                                    () -> System.out.println("Sent to " + p.getName())
-                            );
-                            return Mono.just(p.getName());
-                        });
-                        notifs.add(notif);
-                    }
-                }
-            }
-            if(notifs.size()>0) {
-                Mono.zip(notifs, obj -> Arrays.stream(obj).map(Object::toString).toArray(String[]::new))
-                        .flatMap((sa) -> channel.createMessage("Notified " + String.join(", ", sa))).subscribe();
-            } else {
-                channel.createMessage("Nobody to notify!!!").subscribe();
-            }
+            Notification.scheduleNotif(NotifType.RRevent,curServer,curServer.RRevent.date);
+            notifyRR(curServer).onErrorResume((e)->{
+               if(e instanceof RecoverableError) {
+                   channel.createMessage(e.getMessage()).subscribe();
+                   return Mono.empty();
+               }
+               else return Mono.error(e);
+            }).switchIfEmpty(Flux.empty().doOnComplete(() ->channel.createMessage("Nobody to notify!").subscribe()).cast(String.class))
+                    .reduce((s1, s2)->s1+", "+s2)
+                    .doOnSuccess((s) ->{if(s!= null && s.length() >0) channel.createMessage("Sent RR notif to "+s).subscribe();})
+                    .subscribe();
         }
     };
+
+    static Flux<String> notifyRR(Server curServer) {
+        ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
+        byte[] img;
+        BufferedImage tmpImage = RRmapTeam.getMapImage();
+        if (tmpImage == null) {
+            return Flux.error(new RecoverableError("Unable to get Map image"));
+        }
+        Graphics2D g2d = tmpImage.createGraphics();
+        String[] leaders = teams.stream().filter((t) -> t.size() > 0).map((t) -> t.get(0).getName()).toArray(String[]::new);
+
+        RRmapTeam.drawTeams(g2d, leaders);
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            ImageIO.write(tmpImage, "PNG", bos);
+            img = bos.toByteArray();
+        } catch (Exception e) {
+            return Flux.error(e);
+        }
+        StringBuilder sb = new StringBuilder();
+        return Flux.fromIterable(teams).flatMap((team)-> Flux.fromIterable(Util.getIterable(team,team))).flatMap((tup) -> {
+            Participant p=tup.getT1();
+            ArrayList<Participant> t= tup.getT2();
+            if (p.isDiscord && p.member != null) {
+                sb.setLength(0);
+                for (Participant pa : t) {
+                    if (p != pa) {
+                        sb.append(" - ").append(pa.getName()).append(" (").append(pa.power).append(")\n");
+                    }
+                }
+                final String teamMates=sb.toString();
+                final String teamAssignment = t.get(0) == p ?
+                        "You are the leader of one of the " + teams.size() + " teams" :
+                        "You have been assigned to " + t.get(0).getName() + "'s team";
+                return p.member.getPrivateChannel().flatMap((pc) ->
+                        pc.createMessage(mcs -> {
+                            mcs.addFile("rrmap.png", new ByteArrayInputStream(img));
+                            mcs.setEmbed(ecs -> {
+                                ecs.setDescription("Your Reservoir Raid info for " + curServer.RRevent);
+                                ecs.addField(teamAssignment, "\u200b", false);
+                                if(t.size()>1) ecs.addField("Your team mates", teamMates, false);
+                                ecs.addField("\u200b", "If you want to change to another team ask one of the R4s", false);
+                                ecs.addField("Your attendance to the event is important! We cannot cancel your registration anymore. We count on you!", "\u200b", false);
+                                ecs.setImage("attachment://rrmap.png").setColor(Color.MOON_YELLOW);
+                            });
+                        }).onErrorResume((e) -> {
+                    log.error("Error sending to " + p + ": caused by " + e.getMessage());
+                    return Mono.empty();
+                }).flatMap((m) -> Mono.just(p.getName())).defaultIfEmpty(""));
+            } else {
+                return Mono.just("");
+            }
+        }).filter((String s) -> s.length() > 0);
+    }
 
     // class to draw teams on RR map
     static class RRmapTeam {

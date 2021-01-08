@@ -1,26 +1,35 @@
-import com.joestelmach.natty.DateGroup;
-import com.joestelmach.natty.Parser;
 import discord4j.core.object.entity.channel.MessageChannel;
+import lombok.extern.slf4j.Slf4j;
 
+import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-
-public class TrapCommands {
+@Slf4j
+public class TrapCommands extends ChannelAndCommands{
     public static final String name ="\uD83D\uDC7Dtrap\uD83D\uDC7D";
+    public static final String topic="This channel is to keep track of trap event and the related notifications! Enjoy!";
+    static final String trapHelp = "Everyone should create one rally with best heroes. Try to schedule the rallies so that they are evenly spread across the first 5 minutes.\n Then you join rallies with as many marches as possible as long as you have 3 heroes available.";
 
-    static void init() {
-        ArrayList<Command> commands=new ArrayList<>();
-        commands.add(new HelpCommand());
-        commands.add(notifyCmd);
-        commands.add(stopNotifyCmd);
-        commands.add(infoCmd);
-        Command.registerCmds(name,commands);
+    TrapCommands() {
+        super(name,topic);
+        register(new HelpCommand());
+        register(notifyCmd);
+        register(stopNotifyCmd);
+        register(infoCmd);
+        init();
+        Notification.registerNotifType(NotifType.Trap,new Notification(
+                new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
+                (in)->{
+                    getChannel().createMessage("@everyone Trap will take place in "+Util.format(in.before)+" at "+Util.hhmm.format(in.basetime)+"\n"+trapHelp).subscribe();
+                    log.info("sending trap notif for minus "+in.before.toString());
+                },
+                Duration.ofDays(2L)
+        ));
     }
-    static final  Parser parser = new Parser(TimeZone.getTimeZone("UTC"));
 
     static final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("EEEE dd MMM h:mm a z", Locale.US).withZone(ZoneId.of("UTC"));
     static Command notifyCmd = new SimpleCommand("notify",
@@ -30,26 +39,22 @@ public class TrapCommands {
             curServer.setFollowUpCmd(channel,participant,parseTime);
             channel.createMessage("Please enter next Trap date and timing in utc (e.g 20:00 or tomorrow 21:00)").subscribe();
         }
-
         final Command parseTime = new FollowupCommand() {
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
-                List<DateGroup> groups = parser.parse(content);
-                if(groups.size()==0 || groups.get(0).getDates().size()==0) {
+                Instant base;
+                try {
+                    base = Util.getParser().parseOne(content);
+                } catch(ParseException e) {
                     channel.createMessage("Bad date and time format :"+content);
                     curServer.removeFollowupCmd(channel,participant);
                     return;
                 }
-                Instant base = Instant.ofEpochMilli(groups.get(0).getDates().get(0).getTime());
-                Set<Instant> timings=Notification.getNotifs(NotifType.Trap,curServer);
-                if(timings.size()>0) {
-                    log.info("Deleting existing trap notif first");
-                    Notification.cancelAllNotifs(NotifType.Trap,curServer);
-                }
                 Notification.scheduleNotif(NotifType.Trap, curServer, base);
                 log.info("Scheduled trap notif for " + base);
-                channel.createMessage("Trap notifications now active for event at "+dtf.format(base)).subscribe();
-                curServer.removeFollowupCmd(channel,participant);
+                channel.createMessage("Trap notifications now active for event at " + dtf.format(base)).subscribe();
+                curServer.removeFollowupCmd(channel, participant);
+
             }
         };
     };
@@ -62,7 +67,6 @@ public class TrapCommands {
             if(nbDeleted==0) {
                 channel.createMessage("Nothing to cancel").subscribe();
             } else {
-
                     channel.createMessage("Trap notifications canceled").subscribe();
             }
         }
@@ -82,14 +86,12 @@ public class TrapCommands {
                 Notification notif=Notification.getNotificationDescription(NotifType.Trap);
                 StringBuilder sb=new StringBuilder("Trap notifications are active for an event on ");
                 sb.append(timings.iterator().next()).append(" and every 48h after that. Reminders will be sent:\n");
-                for(Duration d:notif.reminderPattern) sb.append(Notification.format(d)).append("\n");
+                for(Duration d:notif.reminderPattern) sb.append(Util.format(d)).append("\n");
                 sb.append("before the event");
                 channel.createMessage(sb.toString()).subscribe();
             }
         }
     };
-
-
 
 }
 

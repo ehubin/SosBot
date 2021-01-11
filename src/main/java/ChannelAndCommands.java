@@ -17,11 +17,14 @@ public class ChannelAndCommands {
     private final String topic,name;
 
     private ArrayList<Command> theCommands=new ArrayList<>();
+    private ArrayList<NCommand<?>> theNCommands=new ArrayList<>();
     static public void register(ChannelAndCommands cac) { channelset.add(cac);}
     ChannelAndCommands(String n,String t) { name=n;topic=t; }
     public void register(Command cmd) { theCommands.add(cmd);}
+    public void register(NCommand<?> cmd) { theNCommands.add(cmd);}
     public void init() {
-        Command.registerCmds(name,theCommands);
+        if(theCommands.size() >0) Command.registerCmds(name,theCommands);
+        else NCommand.registerCmds(name,theNCommands);
     }
     static public Set<ChannelAndCommands> getAllChannels() {return channelset;}
 

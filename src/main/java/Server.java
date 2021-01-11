@@ -36,6 +36,7 @@ public class Server {
     private static final HashMap<Snowflake,Server> KnownServers=new HashMap<>();
 
     private final HashMap<ChannelPartKey,Command> followUpCmd=new HashMap<>();
+    private final HashMap<ChannelPartKey,NCommand<?>> FollowupNCommand=new HashMap<>();
     Guild guild;
     Snowflake R4roleId=null;
     RREvent RRevent,newRRevent;
@@ -218,6 +219,7 @@ public class Server {
                 RRevent = e;
 
                 SDEvent se = new SDEvent(guild);
+                se.active=rs.getBoolean("sdactive");
                 se.threshold = rs.getFloat("sdthreshold");
                 se.initLaneStatus(rs.getString("sdlanedata"));
                 se.initEnemyStatus(rs.getString("enemylanedata"));
@@ -392,10 +394,17 @@ public class Server {
     public void setFollowUpCmd(MessageChannel channel,Participant p, Command fup) {
         followUpCmd.put(new ChannelPartKey(channel,p),fup);
     }
+    public void setFollowUpNCmd(MessageChannel channel,Participant p, NCommand<?> fup) {
+        FollowupNCommand.put(new ChannelPartKey(channel,p),fup);
+    }
     public void removeFollowupCmd(MessageChannel ch,Participant p) { followUpCmd.remove(new ChannelPartKey(ch,p));}
 
     public Participant getExistingParticipant(Snowflake memberId) {
         return sessions.get(memberId.asLong());
+    }
+
+    public NCommand<?> getNFollowUpCmd(ChannelPartKey k) {
+        return FollowupNCommand.get(k);
     }
 
     private static class queries  {
@@ -413,7 +422,7 @@ public class Server {
             closeE = dbConnection.prepareStatement("UPDATE servers set active='f' where server=?", Statement.RETURN_GENERATED_KEYS);
             openE = dbConnection.prepareStatement("UPDATE servers set active='t' where server=?", Statement.RETURN_GENERATED_KEYS);
             RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=?");
-            SDsave = dbConnection.prepareStatement("UPDATE  servers set sdthreshold=?,sdlanedata=?,enemylanedata=? where server=?");
+            SDsave = dbConnection.prepareStatement("UPDATE  servers set sdthreshold=?,sdlanedata=?,enemylanedata=?,sdactive=? where server=?");
         }
 
     }
@@ -454,8 +463,9 @@ public class Server {
         Guild guild;
         Map<SDPos,SDLaneStatus> laneStatus=new HashMap<>();
         Map<SDPos,SDLaneStatus> enemyStatus=new HashMap<>();
+        boolean active;
         boolean registrationActive() {
-            return laneStatus.isEmpty();
+            return active;
         }
         String getLaneStatus() {
             try {
@@ -501,7 +511,8 @@ public class Server {
                     _Q.SDsave.setFloat(1, threshold);
                     _Q.SDsave.setString(2, getLaneStatus());
                     _Q.SDsave.setString(3, getEnemyStatus());
-                    _Q.SDsave.setLong(4, guild.getId().asLong());
+                    _Q.SDsave.setBoolean(4,active);
+                    _Q.SDsave.setLong(5, guild.getId().asLong());
 
                     _Q.SDsave.executeUpdate();
                 }

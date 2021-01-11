@@ -9,12 +9,9 @@ import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.User;
-import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.gateway.intent.Intent;
 import discord4j.gateway.intent.IntentSet;
 import reactor.core.publisher.Mono;
-import reactor.util.function.Tuple4;
-import reactor.util.function.Tuples;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -168,21 +165,19 @@ public class SosBot {
                 log.error("Participant not found");
                 return Mono.empty();
             } else {
-                return event.getMessage().getChannel()
-                        .map((ch)->Tuples.of(content,p,ch,srv));
+                return event.getMessage().getChannel().map((ch)->new NCommand.MsgContext(content,p,ch,srv));
             }
-        }).map((t) -> {
-            Command.findAndExec(t.getT1(),t.getT2(),t.getT3(),t.getT4());
+        }).flatMap((context) -> {
+            NCommand.findAndExec(context);
             return Mono.empty();
-        }).onErrorContinue(( thr,t)->{
+        }).onErrorContinue(( thr,c)->{
+            NCommand.MsgContext context=(NCommand.MsgContext)c;
             log.error("Error executing "+content,thr);
-            @SuppressWarnings("unchecked")
-            Tuple4<String,Participant, MessageChannel,Server> tup=(Tuple4<String,Participant, MessageChannel,Server> )t;
             if(thr instanceof RecoverableError) {
-                tup.getT3().createMessage(thr.getMessage()).subscribe();
+                context.channel.createMessage(thr.getMessage()).subscribe();
             } else {
-                tup.getT4().removeFollowupCmd(tup.getT3(), tup.getT2()); //cancel current action if any
-                tup.getT3().createMessage("Unexpected error...").subscribe(); //notify user something is wrong
+                context.curServer.removeFollowupCmd(context.channel, context.participant); //cancel current action if any
+                context.channel.createMessage("Unexpected error...").subscribe(); //notify user something is wrong
             }
         }).subscribe();
         return event;

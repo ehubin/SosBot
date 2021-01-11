@@ -106,11 +106,12 @@ public class ShowdownCommands extends ChannelAndCommands {
                     return;
                 }
                 log.info("opening showdown with power threshold "  + curServer.Sd.threshold);
-
+                curServer.Sd.laneStatus.clear();
+                curServer.Sd.enemyStatus.clear();
+                curServer.Sd.active=true;
                 if(curServer.Sd.save()) {
                     curServer.Sd.cleanUp();
-                    curServer.Sd.laneStatus.clear();
-                    curServer.Sd.enemyStatus.clear();
+
                     Notification.scheduleNotif(NotifType.SDcloseReg,curServer,regTime);
                     channel.createMessage("Successfully opened Showdown with power threshold at " + curServer.Sd.threshold).subscribe();
                 } else {
@@ -148,7 +149,7 @@ public class ShowdownCommands extends ChannelAndCommands {
                 curServer.setFollowUpCmd(channel, p, new input(next));
                 channel.createMessage("provide **"+next+"** lane Participant numbers then total power (eg 23 29.5)").subscribe();
             } else {
-
+                curServer.Sd.active=false;
                 if(!curServer.Sd.save()) {
                     log.error("Unexpected database error");
                     channel.createMessage("Unexpected database error").subscribe();

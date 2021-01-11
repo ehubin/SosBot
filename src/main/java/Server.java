@@ -316,7 +316,7 @@ public class Server {
         Arrays.setAll(found,(i)->new AtomicBoolean());
 
         AtomicReference<Snowflake> parentId=new AtomicReference<>();
-        guild.getChannels(EntityRetrievalStrategy.REST).subscribe(c->{
+        guild.getChannels(EntityRetrievalStrategy.REST).doOnNext(c->{
             int i=0;
             for(ChannelAndCommands cac:clist) {
                 if(c.getName().equals(cac.getDefaulName())) {
@@ -329,40 +329,43 @@ public class Server {
                 //System.out.println("found parent");
                 parentId.set(c.getId());
             }
-        });
-        int i=0;
-        for(ChannelAndCommands cac:clist) {
-            if(!found[i++].get()) {
-                guild.createTextChannel(c->{
-                    c.setName(cac.getDefaulName());
-                    c.setTopic(cac.getTopic());
-                    if(parentId.get() != null) c.setParentId(parentId.get());
-                }).doOnError(Throwable::printStackTrace).subscribe((c)->{
-                    cac.setChannel(c);
-                    log.info(cac.getDefaulName()+" channel successfully created for "+guild.getName());
-                });
-            }
-        }
+        }).then(Mono.fromRunnable(()-> {
+                    int i = 0;
+                    for (ChannelAndCommands cac : clist) {
+                        if (!found[i++].get()) {
+                            guild.createTextChannel(c -> {
+                                c.setName(cac.getDefaulName());
+                                c.setTopic(cac.getTopic());
+                                if (parentId.get() != null) c.setParentId(parentId.get());
+                            }).doOnError(Throwable::printStackTrace).subscribe((c) -> {
+                                cac.setChannel(c);
+                                log.info(cac.getDefaulName() + " channel successfully created for " + guild.getName());
+                            });
+                        }
+                    }
+                })).subscribe();
+
         //create R4 role if it does not already exists
         AtomicBoolean foundR4 = new AtomicBoolean(false);
-        guild.getRoles(EntityRetrievalStrategy.REST).subscribe(r->{
+        guild.getRoles(EntityRetrievalStrategy.REST).doOnNext(r->{
             if(r.getName().equals("R4")) {
                 foundR4.set(true);
                 R4roleId = r.getId();
             }
 
-        });
-        if(!foundR4.get()) {
-            System.out.println("Creating R4 role for "+guild.getName());
-            guild.createRole(rcs -> {
-                rcs.setName("R4");
-                rcs.setColor(Color.MOON_YELLOW);
-                rcs.setReason("This is a role for R4 members");
-            }).doOnError(Throwable::printStackTrace).subscribe((r)->{
-                System.out.println(r);
-                R4roleId=r.getId();
-            });
-        }
+        }).then(Mono.fromRunnable(()-> {
+            if (!foundR4.get()) {
+                System.out.println("Creating R4 role for " + guild.getName());
+                guild.createRole(rcs -> {
+                    rcs.setName("R4");
+                    rcs.setColor(Color.MOON_YELLOW);
+                    rcs.setReason("This is a role for R4 members");
+                }).doOnError(Throwable::printStackTrace).subscribe((r) -> {
+                    System.out.println(r);
+                    R4roleId = r.getId();
+                });
+            }
+        })).subscribe();
     }
 
     public Participant createSDParticipant(String name, float pow, SDPos lane) {

@@ -316,7 +316,7 @@ public class Server {
         Arrays.setAll(found,(i)->new AtomicBoolean());
 
         AtomicReference<Snowflake> parentId=new AtomicReference<>();
-        guild.getChannels().subscribe(c->{
+        guild.getChannels(EntityRetrievalStrategy.REST).subscribe(c->{
             int i=0;
             for(ChannelAndCommands cac:clist) {
                 if(c.getName().equals(cac.getDefaulName())) {
@@ -345,7 +345,7 @@ public class Server {
         }
         //create R4 role if it does not already exists
         AtomicBoolean foundR4 = new AtomicBoolean(false);
-        guild.getRoles().subscribe(r->{
+        guild.getRoles(EntityRetrievalStrategy.REST).subscribe(r->{
             if(r.getName().equals("R4")) {
                 foundR4.set(true);
                 R4roleId = r.getId();

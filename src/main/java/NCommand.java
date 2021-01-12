@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
+import reactor.util.annotation.NonNull;
 import reactor.util.context.Context;
 
 import java.time.Duration;
@@ -23,7 +24,7 @@ abstract  class NCommand<T>  implements Cloneable {
             MsgContext context =s.currentContext().get(MsgContext.KEY);
             preRegister(context);
             register(context);
-            sink=new SinkDecorator(s);
+            sink=new SinkDecorator<>(s);
         };
 
         NCommand() {}
@@ -57,12 +58,10 @@ abstract  class NCommand<T>  implements Cloneable {
                 newOne.onMessage(c);
             } catch(RecoverableError r) {
                 c.send(r.getMessage());
-                return;
             } catch(Throwable t) {
                 c.send("Unexpected error");
                 sink.error(t);
             } finally {
-                log.info("unregister "+this);
                 c.curServer.removeFollowupCmd(c.channel,c.participant);
             }
 
@@ -184,42 +183,37 @@ abstract  class NCommand<T>  implements Cloneable {
         }
     }
 
-    class  SinkDecorator<T> implements MonoSink<T> {
-            MonoSink<T> sink;
-            SinkDecorator(MonoSink ms) {sink=ms;}
+    static class  SinkDecorator<T> implements MonoSink<T> {
 
-        @Override
-        public Context currentContext() { return sink.currentContext();}
+        MonoSink<T> sink;
+        SinkDecorator(MonoSink<T> ms) {sink=ms;}
 
-        @Override
+
+        public @NonNull Context currentContext() { return sink.currentContext();}
+
         public void success() {
             MsgContext c =currentContext().get(MsgContext.KEY);
             c.curServer.removeFollowupNCmd(c.channel,c.participant);
             sink.success();
         }
 
-        @Override
         public void success(T value) {
             MsgContext c =currentContext().get(MsgContext.KEY);
             c.curServer.removeFollowupNCmd(c.channel,c.participant);
             sink.success(value);
         }
 
-        @Override
-        public void error(Throwable e) {
+        public void error(@NonNull Throwable e) {
             MsgContext c =currentContext().get(MsgContext.KEY);
             c.curServer.removeFollowupNCmd(c.channel,c.participant);
             sink.error(e);
         }
 
-        @Override
-        public MonoSink<T> onRequest(LongConsumer consumer) { return sink.onRequest(consumer);}
+        public @NonNull MonoSink<T> onRequest(@NonNull LongConsumer consumer) { return sink.onRequest(consumer);}
 
-        @Override
-        public MonoSink<T> onCancel(Disposable d) { return sink.onCancel(d);}
+        public @NonNull MonoSink<T> onCancel(@NonNull Disposable d) { return sink.onCancel(d);}
 
-        @Override
-        public MonoSink<T> onDispose(Disposable d) {return sink.onDispose(d);}
+        public @NonNull MonoSink<T> onDispose(@NonNull Disposable d) {return sink.onDispose(d);}
     }
 
     static class MsgContext {

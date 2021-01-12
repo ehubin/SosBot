@@ -81,14 +81,13 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
                             res.add(ch);
                             log.info(ch.getName()+"  "+ch.getId());
                             sb.append(res.size()).append(ch.getName()).append("\t\t\t").append(ch.getId().asLong()).append("\n");
-                        }).then().doOnSuccess((t)->{c.send(sb.append("Which channel to delete?").toString());});
+                        }).then().doOnSuccess((t)-> c.send(sb.append("Which channel to delete?").toString()));
 
                 Flux<Integer> readInput=new readIntCmd().mono(c)
                         .onErrorResume((t)->{
-                            if(t.getMessage().equals("Guild_Retrieve")) return Mono.empty();;
+                            if(t.getMessage().equals("Guild_Retrieve")) return Mono.empty();
                             if(t instanceof RecoverableError) {
                                 c.send(t.getMessage());
-                            } else if(t.getMessage().equals("Guild_Retrieve")) {
                             } else {
                                 c.send("UNexpected error");
                             }

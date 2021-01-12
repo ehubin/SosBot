@@ -4,8 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Slf4j
@@ -31,7 +29,7 @@ public class TrapCommands extends ChannelAndCommands{
         ));
     }
 
-    static final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("EEEE dd MMM h:mm a z", Locale.US).withZone(ZoneId.of("UTC"));
+
     static Command notifyCmd = new SimpleCommand("notify",
             new Command.BaseData(true,"notify","Set notification time for trap")) {
         @Override
@@ -52,7 +50,7 @@ public class TrapCommands extends ChannelAndCommands{
                 }
                 Notification.scheduleNotif(NotifType.Trap, curServer, base);
                 log.info("Scheduled trap notif for " + base);
-                channel.createMessage("Trap notifications now active for event at " + dtf.format(base)).subscribe();
+                channel.createMessage("Trap notifications now active for event at " + Util.format(base)).subscribe();
                 curServer.removeFollowupCmd(channel, participant);
 
             }

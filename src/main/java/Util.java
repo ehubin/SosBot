@@ -5,6 +5,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.TimeZone;
 
 import com.joestelmach.natty.DateGroup;
@@ -14,6 +15,7 @@ import reactor.util.function.Tuples;
 
 public class Util {
     static final DateTimeFormatter hhmm=DateTimeFormatter.ofPattern("hh:mm a z").withZone(ZoneId.of("UTC"));
+    static final DateTimeFormatter fullDateFormatter = DateTimeFormatter.ofPattern("EEEE dd MMM h:mm a z", Locale.US).withZone(ZoneId.of("UTC"));
     Parser parser;
     static Util theParser;
 
@@ -39,6 +41,9 @@ public class Util {
         } else {
             throw new ParseException("Invalid date format "+input,0);
         }
+    }
+    public static String format(Instant inst) {
+        return fullDateFormatter.format(inst);
     }
 
     static <T,V >Iterable<Tuple2<T,V>> getIterable(Iterable<T> iterable,V other) {

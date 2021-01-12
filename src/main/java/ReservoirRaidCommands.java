@@ -301,6 +301,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                 try {
                     curServer.setFollowUpCmd(channel,participant,yesNo);
                     curServer.newRRevent.date= Util.getParser().parseOne(content);
+                    channel.createMessage("Do you confirm you want to create RR event for "+Util.format(curServer.newRRevent.date)).subscribe();
                 } catch(ParseException e) {
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("Ambiguous date "+content.trim()).subscribe();

@@ -400,7 +400,14 @@ public class Server {
     public void setFollowUpNCmd(MessageChannel channel,Participant p, NCommand<?> fup) {
         FollowupNCommand.put(new ChannelPartKey(channel,p),fup);
     }
-    public void removeFollowupCmd(MessageChannel ch,Participant p) { followUpCmd.remove(new ChannelPartKey(ch,p));}
+    public void removeFollowupCmd(MessageChannel ch,Participant p) {
+        ChannelPartKey k=new ChannelPartKey(ch,p);
+        followUpCmd.remove(k);
+    }
+    public void removeFollowupNCmd(MessageChannel ch,Participant p) {
+        ChannelPartKey k=new ChannelPartKey(ch,p);
+        FollowupNCommand.remove(k);
+    }
 
     public Participant getExistingParticipant(Snowflake memberId) {
         return sessions.get(memberId.asLong());

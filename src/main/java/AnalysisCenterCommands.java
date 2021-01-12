@@ -70,21 +70,44 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
                 String intpart=c.content.replaceAll("[^0-9]", "");
                 long srv=Long.parseLong(intpart);
                 log.info(" retrieving from server "+srv);
-                Mono<Void> getChannels=SosBot.getDiscordGateway().getGuildById(Snowflake.of(srv)).flatMapMany(Guild::getChannels)
+                Mono<Void> getChannels=SosBot.getDiscordGateway().getGuildById(Snowflake.of(srv))
+                        .onErrorMap((t)->{
+                            log.error("retrieve channel error",t);
+                            c.send("Retrieve channel error");
+                            return new Exception("Guild_Retrieve");
+                        })
+                        .flatMapMany(Guild::getChannels)
                         .doOnNext((ch)->{
                             res.add(ch);
                             log.info(ch.getName()+"  "+ch.getId());
                             sb.append(res.size()).append(ch.getName()).append("\t\t\t").append(ch.getId().asLong()).append("\n");
-                        }).then().doOnSuccess((t)->c.send(sb.append("Which channel to delete?").toString()));
+                        }).then().doOnSuccess((t)->{c.send(sb.append("Which channel to delete?").toString());});
 
-                Flux<Integer> readInput=new readIntCmd().mono(c).repeat().takeWhile((i)->i>0);
+                Flux<Integer> readInput=new readIntCmd().mono(c)
+                        .onErrorResume((t)->{
+                            if(t.getMessage().equals("Guild_Retrieve")) return Mono.empty();;
+                            if(t instanceof RecoverableError) {
+                                c.send(t.getMessage());
+                            } else if(t.getMessage().equals("Guild_Retrieve")) {
+                            } else {
+                                c.send("UNexpected error");
+                            }
+                            return Mono.empty();
+                        })
+                        .repeat().takeWhile((i)->i>0);
 
 
                 return super.mono(c).then(getChannels).thenMany(readInput)
                         .flatMap((i)->{
                             Channel ch=res.get(i-1);
                             return ch.delete().then(Mono.just(ch));
-                        }).doOnNext((Channel ch)->c.send("Deleted "+(ch.getType().equals(Channel.Type.GUILD_TEXT)?((TextChannel)ch).getName():"Non text channel")))
+                        })
+                        .doOnError((t)->{
+                            if(t.getMessage().equals("Guild_Retrieve")) return;
+                            log.error("Channel delete error",t);
+                            c.send("Channel delete error");
+                        })
+                        .doOnNext((Channel ch)->c.send("Deleted "+(ch.getType().equals(Channel.Type.GUILD_TEXT)?((TextChannel)ch).getName():"Non text channel")))
                         .doOnComplete(()->c.send("Done!")).then();
             }
         };

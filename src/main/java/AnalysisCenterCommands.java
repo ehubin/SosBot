@@ -1,11 +1,18 @@
+import discord4j.common.util.Snowflake;
+import discord4j.core.object.entity.Guild;
+import discord4j.core.object.entity.channel.Channel;
 import discord4j.core.object.entity.channel.MessageChannel;
+import discord4j.core.object.entity.channel.TextChannel;
 import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Set;
 
 @Slf4j
@@ -17,6 +24,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
             //register(new HelpCommand());
             register(listCmd);
             register(createCmd);
+            register(listChannels);
             init();
             Notification.registerNotifType(NotifType.defendAC,new Notification(
                     new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
@@ -44,7 +52,42 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
                 c.send(sb.toString());
             }
         };
+        static NCommand<Void> listChannels = new NCommand<>() {
+            final StringBuilder sb=new StringBuilder();
+            final ArrayList<Channel> res=new ArrayList<>();
+            @Override
+            boolean matches(String content) {
+                return content.trim().toLowerCase(Locale.ROOT).startsWith("listchannel");
+            }
 
+            @Override
+            void onMessage(MsgContext ctxt) {
+                sink.success();
+            }
+
+            @Override
+            Mono<Void> mono(MsgContext c) {
+                String intpart=c.content.replaceAll("[^0-9]", "");
+                long srv=Long.parseLong(intpart);
+                log.info(" retrieving from server "+srv);
+                Mono<Void> getChannels=SosBot.getDiscordGateway().getGuildById(Snowflake.of(srv)).flatMapMany(Guild::getChannels)
+                        .doOnNext((ch)->{
+                            res.add(ch);
+                            log.info(ch.getName()+"  "+ch.getId());
+                            sb.append(res.size()).append(ch.getName()).append("\t\t\t").append(ch.getId().asLong()).append("\n");
+                        }).then().doOnSuccess((t)->c.send(sb.append("Which channel to delete?").toString()));
+
+                Flux<Integer> readInput=new readIntCmd().mono(c).repeat().takeWhile((i)->i>0);
+
+
+                return super.mono(c).then(getChannels).thenMany(readInput)
+                        .flatMap((i)->{
+                            Channel ch=res.get(i-1);
+                            return ch.delete().then(Mono.just(ch));
+                        }).doOnNext((Channel ch)->c.send("Deleted "+(ch.getType().equals(Channel.Type.GUILD_TEXT)?((TextChannel)ch).getName():"Non text channel")))
+                        .doOnComplete(()->c.send("Done!")).then();
+            }
+        };
 
     static NCommand.NsimpleCommand<Void> createCmd= new NCommand.NsimpleCommand<>("create") {
         AnalysisCenter.Type t;
@@ -96,7 +139,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
                      });
         }
 
-        Command doCreate = new FollowupCommand() {
+        final Command doCreate = new FollowupCommand() {
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
                 AnalysisCenter theOne;

@@ -43,6 +43,7 @@ abstract  class NCommand<T>  implements Cloneable {
         void execute(MsgContext c) {
             NCommand<T> newOne;
             try {
+                //noinspection unchecked
                 newOne = (NCommand<T>) clone();
             } catch (CloneNotSupportedException e) {
                 e.printStackTrace();
@@ -128,7 +129,9 @@ abstract  class NCommand<T>  implements Cloneable {
         @Override
         void onMessage(MsgContext ctxt) {
             try {
-                sink.success(Integer.parseInt(ctxt.content));
+                int read=Integer.parseInt(ctxt.content);
+                log.info("readint "+read);
+                sink.success(read);
             } catch (NumberFormatException e) {
                 sink.error(new RecoverableError("Incorrect format "+ctxt.content));
             }

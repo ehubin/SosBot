@@ -321,7 +321,7 @@ public class Server {
             for(ChannelAndCommands cac:clist) {
                 if(c.getName().equals(cac.getDefaulName())) {
                     found[i].set(true);
-                    cac.setChannel(c instanceof TextChannel? (TextChannel)c:null);
+                    cac.setChannel(c instanceof TextChannel? (TextChannel)c:null,this);
                 }
                 ++i;
             }
@@ -338,7 +338,7 @@ public class Server {
                                 c.setTopic(cac.getTopic());
                                 if (parentId.get() != null) c.setParentId(parentId.get());
                             }).doOnError(Throwable::printStackTrace).subscribe((c) -> {
-                                cac.setChannel(c);
+                                cac.setChannel(c,this);
                                 log.info(cac.getDefaulName() + " channel successfully created for " + guild.getName());
                             });
                         }

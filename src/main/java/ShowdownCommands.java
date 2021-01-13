@@ -28,14 +28,14 @@ public class ShowdownCommands extends ChannelAndCommands {
         Notification.registerNotifType(NotifType.SDnextWave,new Notification(
                 new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
                 (in) ->{
-                    getChannel().createMessage("@R4 showdown swapping phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute").subscribe();
+                    getChannel(in.server).createMessage("@R4 showdown swapping phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute").subscribe();
                     log.info("sending SD next wave notif for minus "+in.before.toString());
                 }
         ));
         Notification.registerNotifType(NotifType.SDcloseReg,new Notification(
                 new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
                 (in) ->{
-                    getChannel().createMessage("@everyone showdown registration phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+SDRegText).subscribe();
+                    getChannel(in.server).createMessage("@everyone showdown registration phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+SDRegText).subscribe();
                     log.info("sending SD next wave notif for minus "+in.before.toString());
                 }
         ));

@@ -43,7 +43,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
         Notification.registerNotifType(NotifType.RRcloseReg,new Notification(
                 new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
                 (in) ->{
-                    getChannel().createMessage("@everyone Reservoir raid registration closes in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Go and register yourself if you want to participate").subscribe();
+                    getChannel(in.server).createMessage("@everyone Reservoir raid registration closes in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Go and register yourself if you want to participate").subscribe();
                     log.info("sending SD next wave notif for minus "+in.before.toString());
                 }
         ));

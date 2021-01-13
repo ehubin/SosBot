@@ -1,10 +1,7 @@
 import discord4j.core.object.entity.channel.Channel;
 import discord4j.core.object.entity.channel.MessageChannel;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class ChannelAndCommands {
     static void initAll() {
@@ -28,13 +25,13 @@ public class ChannelAndCommands {
     }
     static public Set<ChannelAndCommands> getAllChannels() {return channelset;}
 
-    public MessageChannel getChannel() {
-        return theChannel;
+    public MessageChannel getChannel(Server srv) {
+        return theChannel.get(srv.getId());
     }
-    public void setChannel(MessageChannel theChannel) {
-        this.theChannel = theChannel;
+    public void setChannel(MessageChannel channel,Server s) {
+        theChannel.put(s.getId(),channel);
     }
-    private MessageChannel theChannel;
+    private HashMap<Long,MessageChannel> theChannel;
     String getDefaulName() {
         return name;
     }

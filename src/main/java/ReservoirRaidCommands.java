@@ -293,12 +293,17 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
             curServer.setFollowUpCmd(channel,participant,getTime);
-            channel.createMessage(participant.getName() + " please enter event date (e.g Sunday the 12th at 20:00 utc)").subscribe();
+            channel.createMessage(participant.getName() + " please enter event utc date and time (e.g Sunday  20:00)").subscribe();
         }
         final Command getTime = new FollowupCommand() {
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
                 try {
+                    if(content.trim().equalsIgnoreCase("cancel")) {
+                        curServer.removeFollowupCmd(channel,participant);
+                        channel.createMessage("Aborted!").subscribe();
+                        return;
+                    }
                     curServer.setFollowUpCmd(channel,participant,yesNo);
                     curServer.newRRevent.date= Util.getParser().parseOne(content);
                     channel.createMessage("Do you confirm you want to create RR event for "+Util.format(curServer.newRRevent.date)).subscribe();
@@ -315,7 +320,8 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                     curServer.setFollowUpCmd(channel,participant,lastOne);
                     channel.createMessage("Good! now please enter date and time of the RR registration closure").subscribe();
                 } else {
-                    channel.createMessage("No worries enter it again").subscribe();
+                    curServer.setFollowUpCmd(channel,participant,getTime);
+                    channel.createMessage("No worries enter it again (or type \"cancel\" to abort)").subscribe();
                 }
             }
         };

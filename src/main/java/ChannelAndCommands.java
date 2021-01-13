@@ -31,7 +31,7 @@ public class ChannelAndCommands {
     public void setChannel(MessageChannel channel,Server s) {
         theChannel.put(s.getId(),channel);
     }
-    private HashMap<Long,MessageChannel> theChannel;
+    private HashMap<Long,MessageChannel> theChannel=new HashMap<>();
     String getDefaulName() {
         return name;
     }

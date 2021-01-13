@@ -1,7 +1,6 @@
 
 import discord4j.core.object.entity.Member;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -10,8 +9,9 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.stream.Collectors;
 
+
+@Slf4j
 public class Participant {
-    private static final Logger _logger = LoggerFactory.getLogger(Participant.class);
     boolean isDiscord;
     long uid;
     final private String name; //for local users only
@@ -106,7 +106,7 @@ public class Participant {
                 _Q.deleteOne.setLong(2, uid);
                 _Q.deleteOne.executeUpdate();
             } catch(SQLException s) {
-                _logger.error("Error while deleting "+uid,s);
+                log.error("Error while deleting "+uid,s);
                 SosBot.checkDBConnection();
                 return false;
             }
@@ -192,7 +192,7 @@ public class Participant {
     private static class queries  {
         final PreparedStatement insertP,updateP,updateRRreg,updateRRTeam,updateSDLane,deleteOne;
         queries(Connection db)  throws SQLException {
-            insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+            insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING", Statement.RETURN_GENERATED_KEYS);
             updateP = db.prepareStatement("UPDATE members set name=?,power=?,team=?,lane=?,rr=?,isdiscord=? where uid=? and server=?", Statement.RETURN_GENERATED_KEYS);
             updateRRreg =  db.prepareStatement("UPDATE  members set rr=?,power=? where server=? and uid=?");
             updateRRTeam =  db.prepareStatement("UPDATE  members set team=?,name=? where server=? and uid=?");

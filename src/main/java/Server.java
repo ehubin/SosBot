@@ -382,7 +382,7 @@ public class Server {
     private static queries _Q;
     static void initQueries(Connection db) throws SQLException { _Q=new queries(db); }
 
-    public Participant getParticipant(Member m) {
+    public Participant getOrCreateParticipant(Member m) {
         Participant res= sessions.get(m.getId().asLong());
         if(res==null) { // new user
             res = createNewDiscordParticipant(m);

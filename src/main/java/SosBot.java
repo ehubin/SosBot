@@ -131,12 +131,7 @@ public class SosBot {
     private static  MemberJoinEvent ProcessNewMember(MemberJoinEvent e) {
         log.info("New Joiner callback for "+e.getMember().getDisplayName()+"=>"+e);
         Server.getServerFromId(e.getGuildId()).subscribe(
-                srv->{
-                    Participant p=new Participant(e.getMember(),srv);
-                    if(!p.create()) {
-                        log.error("error while saving new member in cb");
-                    }
-                },
+                srv->srv.getOrCreateParticipant(e.getMember()),
                 (t)-> log.error("Error while getting Server for event: "+e,t)
         );
         return e;
@@ -160,7 +155,7 @@ public class SosBot {
         final Member m=event.getMember().get();
         log.info("Received "+content+" from "+m.getDisplayName());
         Server.getServerFromId(event.getGuildId().get()).flatMap(srv->{
-            Participant p= srv.getParticipant(m);
+            Participant p= srv.getOrCreateParticipant(m);
             if(p==null) {
                 log.error("Participant not found");
                 return Mono.empty();

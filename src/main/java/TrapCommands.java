@@ -22,7 +22,7 @@ public class TrapCommands extends ChannelAndCommands{
         Notification.registerNotifType(NotifType.Trap,new Notification(
                 new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
                 (in)->{
-                    getChannel().createMessage("@everyone Trap will take place in "+Util.format(in.before)+" at "+Util.hhmm.format(in.basetime)+"\n"+trapHelp).subscribe();
+                    getChannel(in.server).createMessage("@everyone Trap will take place in "+Util.format(in.before)+" at "+Util.hhmm.format(in.basetime)+"\n"+trapHelp).subscribe();
                     log.info("sending trap notif for minus "+in.before.toString());
                 },
                 Duration.ofDays(2L)

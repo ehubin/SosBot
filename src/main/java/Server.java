@@ -427,7 +427,7 @@ public class Server {
             SDunregAll = dbConnection.prepareStatement("UPDATE  members set lane='0' where server=?");
             RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
             selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
-            createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdthreshold,rrdate) VALUES(?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+            createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdthreshold,rrdate) VALUES(?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
             updateRR = dbConnection.prepareStatement("UPDATE servers set rrdate=?,active=?,teamsaved=? where server=?", Statement.RETURN_GENERATED_KEYS);
             closeE = dbConnection.prepareStatement("UPDATE servers set active='f' where server=?", Statement.RETURN_GENERATED_KEYS);
             openE = dbConnection.prepareStatement("UPDATE servers set active='t' where server=?", Statement.RETURN_GENERATED_KEYS);

@@ -76,10 +76,12 @@ public class Server {
         return guild.getId().asLong();
     }
 
-    List<Participant> getRegisteredRRparticipants() {
+
+    List<Participant> getRegisteredRRparticipants(boolean reversed) {
+        Comparator<Participant> comp= Comparator.comparingDouble(Participant::getPower);
+        if(reversed) comp=comp.reversed();
         return  sessions.values().stream().filter(i -> i.registeredToRR)
-                .sorted(Comparator.comparingDouble(Participant::getPower).reversed())
-                .collect(Collectors.toList());
+                .sorted(comp).collect(Collectors.toList());
 
     }
     Stream<Participant> getRegisteredSDparticipants() {
@@ -100,7 +102,8 @@ public class Server {
                 Float.compare(teamPow(t2), teamPow(t1)));
         return res;
     }
-    ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam, List<Participant> registered) {
+    ArrayList<ArrayList<Participant>> getRRTeams(int nbTeam) {
+        List<Participant> registered = getRegisteredRRparticipants(true);
         if(registered.size()==0) return null;
         if(registered.size()<nbTeam) nbTeam=registered.size();
         ArrayList<ArrayList<Participant>> teams = new ArrayList<>();
@@ -417,6 +420,11 @@ public class Server {
         return FollowupNCommand.get(k);
     }
 
+    public int getNbRRParticipant() {
+        return (int)sessions.values().stream().filter(i -> i.registeredToRR).count();
+    }
+
+
     private static class queries  {
         final PreparedStatement deleteLocalRRParticipants,deleteLocalSDParticipants ,RRunregAll,selectParticipants,
                 selectRRevent,createServer,updateRR,closeE,openE,RRsaveTeam,SDsave,SDunregAll;
@@ -654,6 +662,7 @@ public class Server {
             }
             return true;
         }
+        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
         boolean close() {
             try {
                 synchronized (_Q.closeE) {

@@ -52,6 +52,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
                 c.send(sb.toString());
             }
         };
+
         static NCommand<Void> listChannels = new NCommand<>() {
             final StringBuilder sb=new StringBuilder();
             final ArrayList<Channel> res=new ArrayList<>();

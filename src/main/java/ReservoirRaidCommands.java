@@ -19,7 +19,7 @@ import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+
 
 @Slf4j
 public class ReservoirRaidCommands extends ChannelAndCommands{
@@ -37,6 +37,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
         register(showmapCmd);
         register(listCmd);
         register(r4regCmd);
+        register(unregCmd);
         register(notifyCmd);
         init();
 
@@ -58,6 +59,37 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                         .reduce((s1, s2)->s1+", "+s2).doOnSuccess((s) ->{if(s!= null && s.length() >0) log.info("Sent RR notif to "+s);}).subscribe()
         ));
     }
+
+    static Command unregCmd = new RegexCommand("unreg\\s+(\\d+)",
+            new Command.BaseData(true,"unreg <number>","cancels registration for another user by providing his number from list command")) {
+
+        @Override
+        protected void execute(Matcher ma, String content, Participant participant, MessageChannel channel, Server curServer) {
+            int part_id;
+            try {
+                part_id = Integer.parseInt(ma.group(1));
+            } catch(NumberFormatException e) {
+                channel.createMessage("Incorrect participant number <"+ma.group(1)+"> expected unreg <nb> where number is taken from list command").subscribe();
+                return;
+            }
+            List<Participant> list =curServer.getRegisteredRRparticipants(false);
+            if(part_id<1 || part_id > list.size()) {
+                channel.createMessage("Incorrect participant number <"+part_id+"> expected unreg <nb> where number is taken from list command").subscribe();
+                return;
+            }
+            Participant target=list.get(part_id-1);
+            target.registeredToRR=false;
+            if(target.updateRRTeam(-1)) {
+                channel.createMessage("Registration succesfully cancelled for <"+target.getName()+">").subscribe();
+            } else {
+                channel.createMessage("Unexpected error while trying to cancel registration of <"+target.getName()+">").subscribe();
+            }
+            if(curServer.RRevent.teamSaved) {
+                curServer.RRevent.saveTeams(false);
+                channel.createMessage("Removing saved team while adding new user").subscribe();
+            }
+        }
+    };
     static Command registerCmd = new SimpleCommand("register",
             new Command.BaseData(false,"register","Registers yourself to next reservoir raid event")) {
         @Override
@@ -109,6 +141,15 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                         channel.createMessage("Removing saved team while adding new user").subscribe();
                     }
                     channel.createMessage(participant.getName() + " your registration is confirmed we count on you!").subscribe();
+                    if(curServer.getNbRRParticipant() >=30) {
+                        // update DB
+                        if (!curServer.RRevent.close()) {
+                            channel.createMessage(" the 30 participant mark was reached but RR could not be closed for unexpected reason").subscribe();
+                        } else {
+                            Notification.cancelAllNotifs(NotifType.RRcloseReg,curServer);
+                            channel.createMessage("There are now 30 participants and registration is closed").subscribe();
+                        }
+                    }
                     curServer.removeFollowupCmd(channel,participant);
                 }
             }
@@ -118,19 +159,18 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
             new Command.BaseData(false,"list","Diplays a list of currently registered people")) {
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
-            List<Participant> registered = curServer.sessions.values().stream()
-                    .filter(i -> i.registeredToRR)
-                    .sorted(Comparator.comparingDouble(Participant::getPower))
-                    .collect(Collectors.toList());
+            List<Participant> registered = curServer.getRegisteredRRparticipants(false);
             if (registered.size() == 0) {
                 channel.createMessage("Nobody registered yet").subscribe();
                 return;
             }
             StringBuilder sb = new StringBuilder("Registered so far for ").append(curServer.RRevent).append("\n```");
-            int max = registered.stream().map(p -> p.getName().length()).max(Integer::compareTo).get();
+            int idx=0,max = registered.stream().map(p -> p.getName().length()).max(Integer::compareTo).get();
             for (Participant p : registered) {
-                sb.append(p.getName()).append(" ".repeat(max + 5 - p.getName().length())).append(p.power).append("\n");
+                sb.append(++idx).append(". ").append(p.getName()).append(" ".repeat(max + 5 - p.getName().length()))
+                        .append(p.power).append("\n");
             }
+            if(participant.isR4()) sb.append("you can type unreg <nb> to cancel registration for one of the above guys.");
             sb.append("```");
             channel.createMessage(sb.toString()).subscribe();
         }
@@ -151,7 +191,9 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                     if (!curServer.RRevent.close()) {
                         channel.createMessage("Event \"" + curServer.RRevent + "\" could not be closed for unexpected reason").subscribe();
                     } else {
+                        Notification.cancelAllNotifs(NotifType.RRcloseReg,curServer);
                         channel.createMessage("Event \"" + curServer.RRevent + "\" now closed for registration! When your team composition is finalized (teams command) notify everyone (notify command)").subscribe();
+
                     }
                 } else {
                     channel.createMessage("Closure of \"" + curServer.RRevent + "\" aborted").subscribe();
@@ -204,13 +246,13 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                     return;
                 }
 
-                List<Participant> registered = curServer.getRegisteredRRparticipants();
-                if(registered.size()==0) {
+
+                if(curServer.getNbRRParticipant()==0) {
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage(" Nobody registered yet!").subscribe();
                     return ;
                 }
-                ArrayList<ArrayList<Participant>> teams = curServer.getRRTeams(nbTeam,registered);
+                ArrayList<ArrayList<Participant>> teams = curServer.getRRTeams(nbTeam);
                 assert(teams!= null);
                 curServer.RRevent.nbTeams=nbTeam;
                 curServer.setFollowUpCmd(channel,participant,yesNo);
@@ -222,13 +264,13 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
             @Override
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
                 if (content.trim().equalsIgnoreCase("yes")) {
-                    List<Participant> registered = curServer.getRegisteredRRparticipants();
-                    if (registered.size() == 0) {
+
+                    if(curServer.getNbRRParticipant() == 0) {
                         curServer.removeFollowupCmd(channel, participant);
                         channel.createMessage(" Nobody registered yet!").subscribe();
                         return;
                     }
-                    ArrayList<ArrayList<Participant>> teams = curServer.getRRTeams(curServer.RRevent.nbTeams, registered);
+                    ArrayList<ArrayList<Participant>> teams = curServer.getRRTeams(curServer.RRevent.nbTeams);
                     assert teams != null;
                     if (!curServer.RRevent.saveTeams(true)) {
                         channel.createMessage("unexpected error while trying to save teams");
@@ -422,6 +464,15 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                 else channel.createMessage("Unexpected Error while removing saved team").subscribe();
             }
             channel.createMessage("Successfully registered "+p).subscribe();
+            if(curServer.getNbRRParticipant() >=30) {
+                // update DB
+                if (!curServer.RRevent.close()) {
+                    channel.createMessage(" the 30 participant mark was reached but RR could not be closed for unexpected reason").subscribe();
+                } else {
+                    Notification.cancelAllNotifs(NotifType.RRcloseReg,curServer);
+                    channel.createMessage("There are now 30 participants and registration is closed").subscribe();
+                }
+            }
         }
     };
     static Command notifyCmd = new SimpleCommand("notify",

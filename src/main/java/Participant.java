@@ -138,8 +138,9 @@ public class Participant {
                 PreparedStatement updateRRTeam=_Q.updateRRTeam;
                 updateRRTeam.setInt(1, teamNb);
                 updateRRTeam.setString(2, getName());
-                updateRRTeam.setLong(3, getGuildId());
-                updateRRTeam.setLong(4, getUid());
+                updateRRTeam.setBoolean(3,registeredToRR);
+                updateRRTeam.setLong(4, getGuildId());
+                updateRRTeam.setLong(5, getUid());
                 updateRRTeam.executeUpdate();
             }
         } catch(SQLException se) {
@@ -195,7 +196,7 @@ public class Participant {
             insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING", Statement.RETURN_GENERATED_KEYS);
             updateP = db.prepareStatement("UPDATE members set name=?,power=?,team=?,lane=?,rr=?,isdiscord=? where uid=? and server=?", Statement.RETURN_GENERATED_KEYS);
             updateRRreg =  db.prepareStatement("UPDATE  members set rr=?,power=? where server=? and uid=?");
-            updateRRTeam =  db.prepareStatement("UPDATE  members set team=?,name=? where server=? and uid=?");
+            updateRRTeam =  db.prepareStatement("UPDATE  members set team=?,name=?,rr=? where server=? and uid=?");
             updateSDLane =  db.prepareStatement("UPDATE  members set lane=?,power=? where server=? and uid=?");
             deleteOne = db.prepareStatement("DELETE  from members  where server=? and uid=?");
         }

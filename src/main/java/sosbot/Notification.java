@@ -1,3 +1,5 @@
+package sosbot;
+
 import io.timeandspace.cronscheduler.CronScheduler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -166,14 +168,14 @@ public  class Notification {
             }
         }
     }
-    static void scheduleNotif(NotifType type,Server srv,Instant basetime) {
+    static void scheduleNotif(NotifType type, Server srv, Instant basetime) {
         scheduleNotif(type,srv,basetime,true,true);
     }
     @SuppressWarnings({"SameParameterValue", "unused"})
     static void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean cancelPrevious) {
         scheduleNotif(type,srv,basetime,true,cancelPrevious);
     }
-    static void scheduleNotif(NotifType type,Server srv,Instant basetime,boolean updateDB,boolean cancelPrevious) {
+    static void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious) {
         Notification notif=notifMap.get(type);
         if(notif==null) {
             log.error("Notification not found for " + type);
@@ -312,7 +314,7 @@ public  class Notification {
     }
 
     static class NotificationInput {
-        NotificationInput(Duration before,Instant basetime,Server s) { this.before=before; this.basetime=basetime; server=s;}
+        NotificationInput(Duration before, Instant basetime, Server s) { this.before=before; this.basetime=basetime; server=s;}
         Duration before;
         Instant basetime;
         Server server;

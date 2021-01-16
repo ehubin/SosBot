@@ -1,3 +1,4 @@
+package sosbot;
 
 import discord4j.core.object.entity.Member;
 import lombok.extern.slf4j.Slf4j;

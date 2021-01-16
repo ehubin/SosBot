@@ -1,5 +1,8 @@
+package sosbot;
+
 import discord4j.core.object.entity.channel.MessageChannel;
 import lombok.extern.slf4j.Slf4j;
+import sosbot.ChannelAndCommands;
 
 import java.text.ParseException;
 import java.time.Duration;
@@ -105,7 +108,7 @@ public class ShowdownCommands extends ChannelAndCommands {
                     channel.createMessage("Incorrect date time format <"+content+"> please re-enter correct one");
                     return;
                 }
-                log.info("opening showdown with power threshold "  + curServer.Sd.threshold);
+                Command.log.info("opening showdown with power threshold "  + curServer.Sd.threshold);
                 curServer.Sd.laneStatus.clear();
                 curServer.Sd.enemyStatus.clear();
                 curServer.Sd.active=true;
@@ -151,7 +154,7 @@ public class ShowdownCommands extends ChannelAndCommands {
             } else {
                 curServer.Sd.active=false;
                 if(!curServer.Sd.save()) {
-                    log.error("Unexpected database error");
+                    Command.log.error("Unexpected database error");
                     channel.createMessage("Unexpected database error").subscribe();
                 } else {
                     channel.createMessage("Thanks you are done! Now use nextwave command to proceed.").subscribe();
@@ -241,8 +244,8 @@ public class ShowdownCommands extends ChannelAndCommands {
                     nextWaveCmd::new);
         }
         Iterator<SDPos> laneIt;
-        SDPos cur=SDPos.Undef;
-        void executeNext(Participant p, MessageChannel channel,Server curServer) {
+        SDPos cur= SDPos.Undef;
+        void executeNext(Participant p, MessageChannel channel, Server curServer) {
             if(laneIt.hasNext()) {
                 cur=laneIt.next();
                 curServer.setFollowUpCmd(channel, p, new input());
@@ -262,7 +265,7 @@ public class ShowdownCommands extends ChannelAndCommands {
         }
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
-            laneIt = Arrays.stream(new SDPos[] {SDPos.Left,SDPos.Center,SDPos.Right}).iterator();
+            laneIt = Arrays.stream(new SDPos[] {SDPos.Left, SDPos.Center, SDPos.Right}).iterator();
             Map<SDPos, Server.SDLaneStatus> enemyLanes =curServer.Sd.enemyStatus;
             enemyLanes.put(SDPos.Left,new Server.SDLaneStatus());
             enemyLanes.put(SDPos.Center,new Server.SDLaneStatus());

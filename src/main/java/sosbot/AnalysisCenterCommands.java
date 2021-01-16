@@ -1,3 +1,5 @@
+package sosbot;
+
 import discord4j.common.util.Snowflake;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.channel.Channel;
@@ -6,6 +8,7 @@ import discord4j.core.object.entity.channel.TextChannel;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import sosbot.AnalysisCenter;
 
 
 import java.sql.SQLException;
@@ -16,7 +19,7 @@ import java.util.Locale;
 import java.util.Set;
 
 @Slf4j
-public class AnalysisCenterCommands extends ChannelAndCommands{
+public class AnalysisCenterCommands extends ChannelAndCommands {
         public static final String name ="\uD83D\uDDA5analysis-center\uD83D\uDDA5";
         public static final String topic ="This channel allows to keep track of our Analysis centers  and get notified when they need to be watched/defended";
         AnalysisCenterCommands() {
@@ -29,7 +32,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
             Notification.registerNotifType(NotifType.defendAC,new Notification(
                     new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
                     (in)->{
-                        getChannel(in.server).createMessage("@everyone Trap will take place in "+Util.format(in.before)+" at "+Util.hhmm.format(in.basetime)+"\n").subscribe();
+                        getChannel(in.server).createMessage("@everyone Trap will take place in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n").subscribe();
                         log.info("sending trap notif for minus "+in.before.toString());
                     },
                     Duration.ofDays(2L)
@@ -62,16 +65,16 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
             }
 
             @Override
-            void onMessage(MsgContext ctxt) {
+            void onMessage(NCommand.MsgContext ctxt) {
                 sink.success();
             }
 
             @Override
-            Mono<Void> mono(MsgContext c) {
+            Mono<Void> mono(NCommand.MsgContext c) {
                 String intpart=c.content.replaceAll("[^0-9]", "");
                 long srv=Long.parseLong(intpart);
                 log.info(" retrieving from server "+srv);
-                Mono<Void> getChannels=SosBot.getDiscordGateway().getGuildById(Snowflake.of(srv))
+                Mono<Void> getChannels= SosBot.getDiscordGateway().getGuildById(Snowflake.of(srv))
                         .onErrorMap((t)->{
                             log.error("retrieve channel error",t);
                             c.send("Retrieve channel error");
@@ -84,7 +87,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
                             sb.append(res.size()).append(ch.getName()).append("\t\t\t").append(ch.getId().asLong()).append("\n");
                         }).then().doOnSuccess((t)-> c.send(sb.append("Which channel to delete?").toString()));
 
-                Flux<Integer> readInput=new readIntCmd().mono(c)
+                Flux<Integer> readInput=new NCommand.readIntCmd().mono(c)
                         .onErrorResume((t)->{
                             if(t.getMessage().equals("Guild_Retrieve")) return Mono.empty();
                             if(t instanceof RecoverableError) {
@@ -174,7 +177,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands{
                     return;
                 }
                 catch (SQLException t) {
-                    log.error("AC DB create issue", t);
+                    Command.log.error("AC DB create issue", t);
                     channel.createMessage("Unexpected Database error while creating AC...aborted").subscribe();
                     curServer.removeFollowupCmd(channel, participant);
                     return;

@@ -1,3 +1,4 @@
+package sosbot;
 
 import discord4j.core.object.entity.channel.Channel;
 import discord4j.core.object.entity.channel.MessageChannel;

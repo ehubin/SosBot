@@ -1,8 +1,11 @@
+package sosbot;
+
 import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.rest.util.Color;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import sosbot.ChannelAndCommands;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -19,12 +22,13 @@ import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
+import static sosbot.Util.i18n;
 
 @Slf4j
-public class ReservoirRaidCommands extends ChannelAndCommands{
+public class ReservoirRaidCommands extends ChannelAndCommands {
     static final String name ="\uD83D\uDCA6reservoir-raid\uD83D\uDCA6";
-    static final String topic ="This channel is to keep track of reservoir raid event! Stay tuned!";
+    static final String topic = i18n.getString("RRtopic");
+
     ReservoirRaidCommands() {
         super(name,topic);
         register(new HelpCommand());
@@ -87,7 +91,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
             }
             if(curServer.RRevent.teamSaved) {
                 curServer.RRevent.saveTeams(false);
-                channel.createMessage("Removing saved team while adding new user").subscribe();
+                channel.createMessage(i18n.getString("RR.rmSaved")).subscribe();
             }
         }
     };
@@ -351,7 +355,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                     }
                     curServer.setFollowUpCmd(channel,participant,yesNo);
                     curServer.newRRevent.date= Util.getParser().parseOne(content);
-                    channel.createMessage("Do you confirm you want to create RR event for "+Util.format(curServer.newRRevent.date)).subscribe();
+                    channel.createMessage("Do you confirm you want to create RR event for "+ Util.format(curServer.newRRevent.date)).subscribe();
                 } catch(ParseException e) {
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("Ambiguous date "+content.trim()).subscribe();
@@ -499,7 +503,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                 return;
             }
             float pow=Float.parseFloat(ma.group(2).trim());
-            log.info("registering "  + ma.group(1) + "| " + ma.group(2));
+            Command.log.info("registering "  + ma.group(1) + "| " + ma.group(2));
             Participant p = curServer.createRRParticipant(ma.group(1),pow,true);
             if(p==null) {
                 channel.createMessage("Unexpected error while trying to create participant "+ma.group(1)).subscribe();

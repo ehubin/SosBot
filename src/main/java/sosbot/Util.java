@@ -1,12 +1,11 @@
+package sosbot;
+
 import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.TimeZone;
+import java.util.*;
 
 import com.joestelmach.natty.DateGroup;
 import com.joestelmach.natty.Parser;
@@ -14,6 +13,8 @@ import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
 public class Util {
+    public static ResourceBundle i18n =ResourceBundle.getBundle("messages", Locale.US);
+
     static final DateTimeFormatter hhmm=DateTimeFormatter.ofPattern("hh:mm a z").withZone(ZoneId.of("UTC"));
     static final DateTimeFormatter fullDateFormatter = DateTimeFormatter.ofPattern("EEEE dd MMM h:mm a z", Locale.US).withZone(ZoneId.of("UTC"));
     Parser parser;

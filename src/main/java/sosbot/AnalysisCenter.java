@@ -1,3 +1,4 @@
+package sosbot;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -25,7 +26,7 @@ public class AnalysisCenter {
     public String toString() {
         return "Level"+level+" "+type+ " analysis center "+(challenged?"\u2694":"\uD83D\uDEE1");
     }
-    private AnalysisCenter(Type t,int lvl,Server  server,boolean challenged,boolean ours,Instant next) {
+    private AnalysisCenter(Type t, int lvl, Server server, boolean challenged, boolean ours, Instant next) {
         type=t;
         level=lvl;
         this.server=server;

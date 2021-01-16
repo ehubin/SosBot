@@ -1,3 +1,4 @@
+package sosbot;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -35,8 +36,8 @@ enum SDPos { Undef,Left,Center,Right}
 public class Server {
     private static final HashMap<Snowflake,Server> KnownServers=new HashMap<>();
 
-    private final HashMap<ChannelPartKey,Command> followUpCmd=new HashMap<>();
-    private final HashMap<ChannelPartKey,NCommand<?>> FollowupNCommand=new HashMap<>();
+    private final HashMap<ChannelPartKey, Command> followUpCmd=new HashMap<>();
+    private final HashMap<ChannelPartKey, NCommand<?>> FollowupNCommand=new HashMap<>();
     Guild guild;
     Snowflake R4roleId=null;
     RREvent RRevent,newRRevent;
@@ -207,7 +208,7 @@ public class Server {
         return null;
     }
     Mono<Void> initFromDB() {
-        final Map<Long,Participant.data> newDiscordMembers= new HashMap<>();
+        final Map<Long, Participant.data> newDiscordMembers= new HashMap<>();
         try {
             ResultSet rs;
             synchronized (_Q.selectRRevent) {
@@ -397,17 +398,17 @@ public class Server {
         return followUpCmd.get(k);
     }
 
-    public void setFollowUpCmd(MessageChannel channel,Participant p, Command fup) {
+    public void setFollowUpCmd(MessageChannel channel, Participant p, Command fup) {
         followUpCmd.put(new ChannelPartKey(channel,p),fup);
     }
-    public void setFollowUpNCmd(MessageChannel channel,Participant p, NCommand<?> fup) {
+    public void setFollowUpNCmd(MessageChannel channel, Participant p, NCommand<?> fup) {
         FollowupNCommand.put(new ChannelPartKey(channel,p),fup);
     }
-    public void removeFollowupCmd(MessageChannel ch,Participant p) {
+    public void removeFollowupCmd(MessageChannel ch, Participant p) {
         ChannelPartKey k=new ChannelPartKey(ch,p);
         followUpCmd.remove(k);
     }
-    public void removeFollowupNCmd(MessageChannel ch,Participant p) {
+    public void removeFollowupNCmd(MessageChannel ch, Participant p) {
         ChannelPartKey k=new ChannelPartKey(ch,p);
         FollowupNCommand.remove(k);
     }

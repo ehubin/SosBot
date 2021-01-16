@@ -1,4 +1,5 @@
-import discord4j.core.object.entity.channel.Channel;
+package sosbot;
+
 import discord4j.core.object.entity.channel.MessageChannel;
 
 import java.util.*;
@@ -28,7 +29,7 @@ public class ChannelAndCommands {
     public MessageChannel getChannel(Server srv) {
         return theChannel.get(srv.getId());
     }
-    public void setChannel(MessageChannel channel,Server s) {
+    public void setChannel(MessageChannel channel, Server s) {
         theChannel.put(s.getId(),channel);
     }
     private HashMap<Long,MessageChannel> theChannel=new HashMap<>();

@@ -34,6 +34,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
         register(reopenCmd);
         register(teamsCmd);
         register(swapCmd);
+        register(moveCmd);
         register(showmapCmd);
         register(listCmd);
         register(r4regCmd);
@@ -220,7 +221,9 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
             if(curServer.RRevent.teamSaved) {
                 ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
                 StringBuilder sb = Server.displayTeams(teams);
-                if (participant.isR4()) sb.append("\nYou can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3");
+                if (participant.isR4())
+                    sb.append("\nYou can swap players around by typing (e.g swap 1.2 3.1) to swap second player in team 1 with first player in team 3\n")
+                            .append("Also you can move players. move 2.1 1 will move first player in team 2 into team 1.");
                 channel.createMessage(sb.toString()).subscribe();
             } else {
                 if(participant.isR4()) {
@@ -422,6 +425,10 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
                 channel.createMessage("Invalid team number "+toTeam).subscribe();
                 return;
             }
+            if(toTeam==fromTeam) {
+                channel.createMessage("Swapping players from the same team does not make sense").subscribe();
+                return;
+            }
             if(fromPlayer<=0 || fromPlayer > teams.get(fromTeam-1).size()) {
                 channel.createMessage("Invalid player number "+fromPlayer).subscribe();
                 return;
@@ -441,7 +448,47 @@ public class ReservoirRaidCommands extends ChannelAndCommands{
             }
         }
     };
+    static Command moveCmd = new RegexCommand(Pattern.compile("move\\s+(\\d).(\\d+)\\s+(\\d)",Pattern.CASE_INSENSITIVE),
+            new Command.BaseData(true,"move x.y z","Swaps player y in team x  in team z")) {
 
+        @Override
+        protected void execute(Matcher ma, String content, Participant participant, MessageChannel channel, Server curServer) {
+            if(!curServer.RRevent.teamSaved) {
+                channel.createMessage("You have to save teams before swapping players").subscribe();
+                return;
+            }
+            int fromTeam=Integer.parseInt(ma.group(1));
+            int fromPlayer=Integer.parseInt(ma.group(2));
+            int toTeam=Integer.parseInt(ma.group(3));
+            ArrayList<ArrayList<Participant>> teams = curServer.getRRSavedTeams();
+            int teamNb = teams.size();
+            if(fromTeam<=0 || fromTeam>teamNb) {
+                channel.createMessage("Invalid team number "+fromTeam).subscribe();
+                return;
+            }
+            if(toTeam<=0 || toTeam>teamNb) {
+                channel.createMessage("Invalid team number "+toTeam).subscribe();
+                return;
+            }
+            if(toTeam==fromTeam) {
+                channel.createMessage("Moving to the same team does not make sense").subscribe();
+                return;
+            }
+            if(fromPlayer<=0 || fromPlayer > teams.get(fromTeam-1).size()) {
+                channel.createMessage("Invalid player number "+fromPlayer).subscribe();
+                return;
+            }
+            Participant from = teams.get(fromTeam-1).get(fromPlayer-1);
+
+            if(from.updateRRTeam(toTeam)) {
+                StringBuilder sb = Server.displayTeams(curServer.getRRSavedTeams());
+                sb.insert(0,from.getName()+" now in team #"+toTeam);
+                channel.createMessage(sb.toString()).subscribe();
+            } else {
+                channel.createMessage("Unexpected error while moving "+from.getName()).subscribe();
+            }
+        }
+    };
     static Command r4regCmd = new RegexCommand(Pattern.compile("r4reg\\s+(.*\\S)\\s+(\\d+.?\\d*)",Pattern.CASE_INSENSITIVE),
             new Command.BaseData(true,"r4reg <name> <power>","Registers a participant who did/can not go through the bot")) {
 

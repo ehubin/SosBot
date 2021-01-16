@@ -483,10 +483,11 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
                 return;
             }
             Participant from = teams.get(fromTeam-1).get(fromPlayer-1);
-
-            if(from.updateRRTeam(toTeam)) {
+            int to=teams.get(toTeam-1).get(0).RRteamNumber;
+            log.info("==>"+to+","+toTeam);
+            if(from.updateRRTeam(to)) {
                 StringBuilder sb = Server.displayTeams(curServer.getRRSavedTeams());
-                sb.insert(0,from.getName()+" now in team #"+toTeam);
+                sb.insert(0,"Moved "+from.getName()+" from "+teams.get(fromTeam-1).get(0).getName()+"'s team to "+teams.get(toTeam-1).get(0).getName()+"'s one (Team order/numbers might have changed).");
                 channel.createMessage(sb.toString()).subscribe();
             } else {
                 channel.createMessage("Unexpected error while moving "+from.getName()).subscribe();

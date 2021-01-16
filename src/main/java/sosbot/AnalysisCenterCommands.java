@@ -93,7 +93,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands {
                             if(t instanceof RecoverableError) {
                                 c.send(t.getMessage());
                             } else {
-                                c.send("UNexpected error");
+                                c.send("Unexpected error");
                             }
                             return Mono.empty();
                         })

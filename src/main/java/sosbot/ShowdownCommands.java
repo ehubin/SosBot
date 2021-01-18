@@ -105,7 +105,7 @@ public class ShowdownCommands extends ChannelAndCommands {
                 try {
                     regTime = Util.getParser().parseOne(content);
                 } catch (ParseException e) {
-                    channel.createMessage("Incorrect date time format <"+content+"> please re-enter correct one");
+                    channel.createMessage("Incorrect date time format <"+content+"> please re-enter correct one").subscribe();
                     return;
                 }
                 Command.log.info("opening showdown with power threshold "  + curServer.Sd.threshold);

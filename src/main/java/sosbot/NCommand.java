@@ -13,67 +13,81 @@ import reactor.util.context.Context;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
-abstract  class NCommand<T>  implements Cloneable {
-        static HashMap<String, List<NCommand<?>>> ChannelCmds=new HashMap<>();
+abstract  class NCommand<T> {
+    static HashMap<String, List<NCommand<?>>> ChannelCmds=new HashMap<>();
+    BaseData bd=null;
+    Supplier<NCommand<T>> factory=this::me;
+    NCommand<T> me() {return this;}
+    MonoSink<T> sink ;
 
-        MonoSink<T> sink ;
-        String sendBefore=null;
-        Consumer<MonoSink<T>> internalCb=(s)->{
-            MsgContext context =s.currentContext().get(MsgContext.KEY);
-            preRegister(context);
-            register(context);
-            sink=new SinkDecorator<>(s);
-        };
+    Consumer<MonoSink<T>> internalCb=(s)->{
+        MsgContext context =s.currentContext().get(MsgContext.KEY);
+        register(context);
+        sink=new SinkDecorator<>(s);
+    };
+    public boolean isBaseCommand() {return bd!= null;}
+    // syntax of the command
+    public String getSyntax() {return bd!= null ? bd.syntax:"";}
+    // Help text describing the syntax
+    public String getHelpText(){ return bd!= null ? bd.helpText:"";}
+    // true if only R4 can perform this command
+    public boolean isR4Only() { return bd != null && bd.isR4Only;}
+    public NCommand<T> getOne() { return factory==null? null:factory.get();}
+    protected NCommand() {}
+    // stateful base commands need to implement this constructor
+    protected NCommand(BaseData bdata, Supplier<NCommand<T>> factory) { bd=bdata; this.factory=factory;}
+    // ok for stateless commands
+    protected NCommand(BaseData bdata) { bd=bdata; this.factory=this::me;}
+    
 
-        NCommand() {}
-        Mono<T> mono(MsgContext c) {
-            return Mono.create(internalCb).subscriberContext((context)->context.put(MsgContext.KEY,c));
+    Mono<T> mono(MsgContext c) {
+        return Mono.create(internalCb).subscriberContext((context)->context.put(MsgContext.KEY,c));
+    }
+
+
+    //callback to handle messages
+    abstract Optional<T> onMessage(MsgContext ctxt);
+
+
+    //determines whether an incoming message is matching this command or not
+    abstract boolean matches(String content);
+
+    void execute(MsgContext c) {
+        if(isR4Only() && !c.participant.isR4()) {
+            c.send("Sorry, the \"" + getSyntax()+"\" command is for R4s only.");
+        }
+        try {
+            Optional<T> ret=onMessage(c);
+            if(ret.isPresent()) sink.success(ret.get());
+            else sink.success();
+        } catch(RecoverableError r) {
+            c.send(r.getMessage());
+        }   catch(Util.UnrecoverableError r) {
+            c.send(r.getMessage());
+            c.removeFollowup();
+            sink.error(r);
+        } catch(Throwable t) {
+            c.send("Unexpected error");
+            c.removeFollowup();
+            sink.error(t);
+        } finally {
+            c.curServer.removeFollowupCmd(c.channel,c.participant);
         }
 
-        //callback to handle messages
-        abstract void onMessage(MsgContext ctxt);
-
-        //create a new instance of this command everytime a msg is received
-        public Object clone() throws CloneNotSupportedException{
-            return super.clone();
-        }
-
-        //determines whether an incoming message is matching this command or not
-        boolean matches(String content) {return content.matches("\\d+");}
-
-        void execute(MsgContext c) {
-            NCommand<T> newOne;
-            try {
-                //noinspection unchecked
-                newOne = (NCommand<T>) clone();
-            } catch (CloneNotSupportedException e) {
-                e.printStackTrace();
-                return;
-            }
-            try {
-                newOne.onMessage(c);
-            } catch(RecoverableError r) {
-                c.send(r.getMessage());
-            } catch(Throwable t) {
-                c.send("Unexpected error");
-                sink.error(t);
-            } finally {
-                c.curServer.removeFollowupCmd(c.channel,c.participant);
-            }
-
-        }
-        //used to register the onMessage callback in the discord event loop when mono is subscribed
-        void register(MsgContext c) {
-            c.curServer.setFollowUpNCmd(c.channel,c.participant,this);
-            log.info("register "+this);
-        }
-
-        // Allows to perform an action just befor ethe register happens
-        protected void preRegister(MsgContext c) {if(sendBefore!= null) c.send(sendBefore);}
+    }
+    //used to register the onMessage callback in the discord event loop when mono is subscribed
+    void register(MsgContext c) {
+        c.curServer.setFollowUpNCmd(c.channel,c.participant,this);
+        log.info("register "+this);
+    }
 
 
     static void findAndExec(MsgContext c) {
@@ -94,8 +108,21 @@ abstract  class NCommand<T>  implements Cloneable {
             if (baseCmds != null && baseCmds.size()>0) {
                 for (NCommand<?> cmd : baseCmds) {
                     if (cmd.matches(c.content)) {
-                        cmd.mono(c).subscribe();
-                        cmd.execute(c);
+                        NCommand<?> cloned=cmd.getOne();
+                        cloned.mono(c).subscribe((ret)->{},(thr)->{
+                            if(thr instanceof Util.UnrecoverableError) {
+                                c.send(thr.getMessage());
+                                c.curServer.removeFollowupNCmd(c.channel,c.participant);
+                            } else if(thr instanceof RecoverableError) {
+                                c.send(thr.getMessage());
+                            } else {
+
+                                c.send("Unexpected error...");
+                                c.curServer.removeFollowupNCmd(c.channel,c.participant);
+                            }
+                            log.error("Mono error",thr);
+                        });
+                        cloned.execute(c);
                         return;
                     }
                 }
@@ -118,67 +145,103 @@ abstract  class NCommand<T>  implements Cloneable {
     }
     static void registerCmds(String channelName,List<NCommand<?>> l) {ChannelCmds.put(channelName,l);}
 
-    static abstract class NsimpleCommand<T>  extends NCommand<T> {
+    static abstract class SimpleCommand<T>  extends NCommand<T> {
         String theCmd;
-        NsimpleCommand(String command) {
+        SimpleCommand(String command,BaseData bdata, Supplier<NCommand<T>> factory) {
+              super(bdata,factory);
               theCmd=command;
         }
-
+        SimpleCommand(String command,BaseData bdata) {
+            super(bdata);
+            theCmd=command;
+        }
+        SimpleCommand(String command) {
+            theCmd=command;
+        }
         @Override
         boolean matches(String content) {
             return content.trim().equalsIgnoreCase(theCmd);
         }
     }
+
+
+    static  abstract  class NRegexCommand<T>  extends NCommand<T> {
+        Pattern regex;
+        NRegexCommand(String regex) {
+            this.regex=Pattern.compile(regex);
+        }
+        @Override
+        Optional<T> onMessage(MsgContext c) {
+            return onMessage(regex.matcher(c.content.trim()),c);
+        }
+
+        abstract Optional<T> onMessage(Matcher ma, MsgContext c);
+
+        @Override
+        boolean matches(String content) {
+            return regex.matcher(content).matches();
+        }
+    }
+
     static class readIntCmd extends NCommand<Integer> {
         readIntCmd() {super();}
         @Override
-        void onMessage(MsgContext ctxt) {
+        boolean matches(String content) { return content.trim().matches("\\d+"); }
+        @Override
+        Optional<Integer> onMessage(MsgContext ctxt) {
             try {
-                int read=Integer.parseInt(ctxt.content);
+                int read=Integer.parseInt(ctxt.content.trim());
                 log.info("readint "+read);
-                sink.success(read);
+                return Optional.of(read);
             } catch (NumberFormatException e) {
-                sink.error(new RecoverableError("Incorrect format "+ctxt.content));
+                throw new RecoverableError("Incorrect number format "+ctxt.content);
             }
         }
     }
     static class yesNoCmd extends NCommand<Boolean> {
-        void onMessage(MsgContext ctxt) {
-            sink.success(ctxt.content.trim().equalsIgnoreCase("yes"));
+        @Override
+        Optional<Boolean> onMessage(MsgContext ctxt) {
+            return Optional.of(ctxt.content.trim().equalsIgnoreCase("yes"));
         }
+
+        @Override
+        boolean matches(String content) { return true; }
     }
 
-    static class readDuration extends NCommand<Duration> {
-        void onMessage(MsgContext c) {
-            String[] parts=c.content.trim().split(":");
-            if(parts.length ==2 || parts.length==3) {
-                try {
-                    int hours = Integer.parseInt(parts[0]);
-                    if(hours<0 || hours>23) {
-                        sink.error(new RecoverableError("incorrect hour nb <"+parts[0]+">"));
-                        return;
-                    }
-                    int minutes = Integer.parseInt(parts[1]);
-                    if(minutes<0 || minutes>59) {
-                        sink.error(new RecoverableError("incorrect minute nb <"+parts[1]+">"));
-                        return;
-                    }
-                    int seconds=0;
+    static class readDuration extends NRegexCommand<Duration> {
+        readDuration() {
+            super("((\\d)d)*\\s*(\\d{1,2}):(\\d{2})(:(\\d{2}))*");
+        }
 
-                    if (parts.length == 3) {
-                        seconds = Integer.parseInt(parts[2]);
-                        if(seconds<0 || seconds>59) {
-                            sink.error(new RecoverableError("incorrect seconds nb <"+parts[2]+">"));
-                            return;
-                        }
-                    }
-                    sink.success(Duration.ofSeconds(hours*3600+minutes*60+seconds));
-                } catch(NumberFormatException e) {
-                    sink.error(new RecoverableError("Wrong format <"+c.content.trim()+"> expecting hh:mm or hh:mm:ss"));
-                }
-            } else {
-                sink.error(new RecoverableError("Wrong format <"+c.content.trim()+"> expecting hh:mm or hh:mm:ss"));
+
+        @Override
+        Optional<Duration> onMessage(Matcher ma,MsgContext c) {
+            if(!ma.matches()) {
+                throw new RecoverableError("incorrect duration format <"+c.content+"> expecting somrthing like 1d 23:30:24");
             }
+            int days=0;
+            boolean hasDays=false;
+            if(ma.group(2)!= null) {
+                days=Integer.parseInt(ma.group(2));
+                hasDays=true;
+            }
+            int hours = Integer.parseInt(ma.group(3));
+            if(hours<0 || hours>23) {
+                throw new RecoverableError("incorrect hour nb <"+ma.group(3)+">");
+
+            }
+            int minutes = Integer.parseInt(ma.group(4));
+            if(minutes<0 || minutes>59) {
+                 throw new RecoverableError("incorrect minute nb <"+ma.group(4)+">");
+            }
+            int seconds=0;
+            if (ma.group(6) != null) {
+                seconds = Integer.parseInt(ma.group(6));
+                if(seconds<0 || seconds>59) {
+                    throw new RecoverableError("incorrect seconds nb <"+ma.group(6)+">");
+                }
+            }
+            return Optional.of(Duration.ofSeconds((days*24+hours)*3600+minutes*60+seconds));
         }
     }
 
@@ -228,5 +291,47 @@ abstract  class NCommand<T>  implements Cloneable {
         void send(String msg) {
             channel.createMessage(msg).subscribe();
         }
+        void removeFollowup() {
+            curServer.removeFollowupNCmd(channel,participant);}
+    }
+    static class BaseData {
+        boolean isR4Only;
+        String syntax;
+        String helpText;
+
+        public BaseData(boolean isR4 , String syntax, String help) {
+            isR4Only=isR4;
+            this.syntax=syntax;
+            helpText=help;
+        }
+    }
+    static class HelpCommand extends SimpleCommand<Void> {
+        static final int space = 4;
+
+        HelpCommand() {
+            super("help", new BaseData(false, "help", "Provide a list of commands available on this channel"));
+        }
+
+        @Override
+        Optional<Void> onMessage(MsgContext ctxt) {
+            int max = 0;
+            StringBuilder sb = new StringBuilder("```");
+            if(ctxt.channel.getType() == Channel.Type.GUILD_TEXT) {
+                TextChannel tch=(TextChannel) ctxt.channel;
+                for (NCommand<?> c : ChannelCmds.get(tch.getName())) {
+                    max = Math.max(max, c.getSyntax().length());
+                }
+                for (NCommand<?> c : ChannelCmds.get(tch.getName())) {
+                    if (c.isBaseCommand()) {
+                        sb.append(c.getSyntax()).append(" ".repeat(max + space - c.getSyntax().length())).append(c.getHelpText())
+                                .append(c.isR4Only() ? "(R4 only)" : "").append("\n");
+
+                    }
+                }
+                ctxt.send(sb.append("```").toString());
+            }
+            return Optional.empty();
+        }
+
     }
 }

@@ -275,10 +275,9 @@ public class Server {
                             sessions.put(uid, p);
                         }
                     }
-
                 }
-
             }
+            AnalysisCenter.initFromDb(this);
 
         } catch(SQLException e) {
             e.printStackTrace();

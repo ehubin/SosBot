@@ -17,6 +17,7 @@ public class Util {
 
     static final DateTimeFormatter hhmm=DateTimeFormatter.ofPattern("hh:mm a z").withZone(ZoneId.of("UTC"));
     static final DateTimeFormatter fullDateFormatter = DateTimeFormatter.ofPattern("EEEE dd MMM h:mm a z", Locale.US).withZone(ZoneId.of("UTC"));
+    public static DateTimeFormatter dayDuration= DateTimeFormatter.ofPattern("EEEE H:mm:ss z", Locale.US).withZone(ZoneId.of("UTC"));;
     Parser parser;
     static Util theParser;
 
@@ -62,5 +63,9 @@ public class Util {
                 }
             };
         };
+    }
+    static class UnrecoverableError extends RuntimeException {
+        UnrecoverableError(String msg) { super(msg);}
+        UnrecoverableError(String msg,Throwable cause) {super(msg,cause);}
     }
 }

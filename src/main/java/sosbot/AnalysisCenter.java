@@ -24,7 +24,8 @@ public class AnalysisCenter {
     boolean challenged;
     Instant nextChange;
     public String toString() {
-        return "Level"+level+" "+type+ " analysis center "+(challenged?"\u2694":"\uD83D\uDEE1");
+        return (ours?"\uD83D\uDC4D ":"\uD83D\uDC4E ")+"Lvl "+level+"\t"+type+ " AC "+(challenged?"\u2694\n":"\uD83D\uDEE1\n")
+                +(challenged?"In danger until: ":"Up for grabs from: ")+Util.dayDuration.format(nextChange);
     }
     private AnalysisCenter(Type t, int lvl, Server server, boolean challenged, boolean ours, Instant next) {
         type=t;
@@ -45,6 +46,31 @@ public class AnalysisCenter {
     public int hashCode() {
         HashCodeBuilder hcb=new HashCodeBuilder();
         return hcb.append(level).append(server.getId()).append(type.ordinal()).hashCode();
+    }
+
+
+    static void initFromDb(Server s) {
+        try {
+            synchronized (_Q.getAll) {
+                _Q.getAll.setLong(1, s.getId());
+                ResultSet rs=_Q.getAll.executeQuery();
+                ACMap.computeIfAbsent(s.getId(), k -> new HashSet<>());
+                while(rs.next()) {
+                    AnalysisCenter ac=new AnalysisCenter(
+                            Type.values()[rs.getInt("type")],
+                            rs.getInt("level"),
+                            s,
+                            rs.getBoolean("challenged"),
+                            rs.getBoolean("ours"),
+                            Instant.ofEpochMilli(rs.getTimestamp("next").getTime())
+                            );
+                    ACMap.get(s.getId()).add(ac);
+                }
+            }
+        } catch(SQLException e) {
+            log.error("AC DB retrieve issue",e);
+        }
+
     }
     static AnalysisCenter create(Type t, int lvl, Server server, boolean challenged, boolean ours, Instant next) throws SQLException{
         AnalysisCenter res=new AnalysisCenter(t,lvl,server,challenged,ours,next);

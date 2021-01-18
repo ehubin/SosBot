@@ -141,8 +141,8 @@ public class SosBot {
 
     static MessageCreateEvent processMessage( MessageCreateEvent event) {
         Optional<User> msgAuthor=event.getMessage().getAuthor();
-        if(msgAuthor.isPresent() && msgAuthor.get().getId().equals(myId)) {
-            // Ignore Message from myself
+        if(msgAuthor.isPresent() && msgAuthor.get().isBot()){
+            // Ignore Message from myself or other bots
             return event;
         }
         final String content = event.getMessage().getContent().trim();
@@ -164,18 +164,16 @@ public class SosBot {
             } else {
                 return event.getMessage().getChannel().map((ch)->new NCommand.MsgContext(content,p,ch,srv));
             }
-        }).flatMap((context) -> {
-            NCommand.findAndExec(context);
-            return Mono.empty();
-        }).onErrorContinue(( thr,c)->{
-            NCommand.MsgContext context=(NCommand.MsgContext)c;
-            log.error("Error executing "+content,thr);
-            if(thr instanceof RecoverableError) {
-                context.channel.createMessage(thr.getMessage()).subscribe();
-            } else {
-                context.curServer.removeFollowupCmd(context.channel, context.participant); //cancel current action if any
+        }).map((context) -> {
+            try {
+                NCommand.findAndExec(context);
+            } catch(RecoverableError re) {
+                context.channel.createMessage(re.getMessage()).subscribe();
+            } catch (Throwable t) {
+                context.removeFollowup(); //cancel current action if any
                 context.channel.createMessage("Unexpected error...").subscribe(); //notify user something is wrong
             }
+            return Mono.empty();
         }).subscribe();
         return event;
     }

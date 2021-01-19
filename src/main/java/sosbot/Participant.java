@@ -218,7 +218,7 @@ public class Participant {
     private static class queries  {
         final PreparedStatement insertP,updateP,updateRRreg,updateRRTeam,updateSDLane,deleteOne,CCreg;
         queries(Connection db)  throws SQLException {
-            insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord,cc) VALUES(?,?,?,?,?,?,?,?.?) ON CONFLICT DO NOTHING", Statement.RETURN_GENERATED_KEYS);
+            insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord,cc) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING", Statement.RETURN_GENERATED_KEYS);
             updateP = db.prepareStatement("UPDATE members set name=?,power=?,team=?,lane=?,rr=?,isdiscord=?,cc=? where uid=? and server=?", Statement.RETURN_GENERATED_KEYS);
             updateRRreg =  db.prepareStatement("UPDATE  members set rr=?,power=? where server=? and uid=?");
             updateRRTeam =  db.prepareStatement("UPDATE  members set team=?,name=?,rr=? where server=? and uid=?");

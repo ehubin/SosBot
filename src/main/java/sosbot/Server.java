@@ -42,6 +42,8 @@ public class Server {
     Snowflake R4roleId=null;
     RREvent RRevent,newRRevent;
     SDEvent Sd;
+    boolean CCactive=false;
+    Instant CCstart=null;
     protected HashMap<Long, Participant> sessions = new HashMap<>();
 
     public Server(Guild guild) {
@@ -89,6 +91,12 @@ public class Server {
         return  sessions.values().stream().filter(i -> i.lane != SDPos.Undef)
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed());
     }
+    Stream<Participant> getRegisteredCCparticipants(boolean reversed) {
+        Comparator<Participant> comp= Comparator.comparingDouble(Participant::getPower);
+        if(reversed) comp=comp.reversed();
+        return sessions.values().stream().filter(i -> i.registeredToCC)
+                .sorted(comp);
+    }
 
     ArrayList<ArrayList<Participant>> getRRSavedTeams() {
         List<Participant>list=sessions.values().stream().filter(i -> i.registeredToRR)
@@ -126,6 +134,42 @@ public class Server {
                 Float.compare(teamPow(t2), teamPow(t1)));
         return teams;
     }
+
+    boolean openCC(Instant start) {
+        try{
+            synchronized (_Q.openCC) {
+                _Q.openCC.setTimestamp(1,Timestamp.from(start));
+                _Q.openCC.setLong(2,getId());
+                _Q.openCC.executeUpdate();
+                _Q.CCunregAll.setLong(1,getId());
+                _Q.CCunregAll.executeUpdate();
+            }
+        } catch(SQLException e) {
+            SosBot.checkDBConnection();
+            log.error("error openning cc",e);
+            return false;
+        }
+        CCactive=true;
+        CCstart=start;
+        return true;
+    }
+
+    boolean closeCC() {
+        try{
+            synchronized (_Q.closeCC) {
+                _Q.closeCC.setLong(1,getId());
+                _Q.closeCC.executeUpdate();
+            }
+        } catch(SQLException e) {
+            SosBot.checkDBConnection();
+            log.error("error closing cc",e);
+            return false;
+        }
+        CCactive=false;
+        CCstart=null;
+        return true;
+    }
+
     static float teamPow(ArrayList<Participant> t) {
         float res=0f;
         for(Participant p:t) res+= p.power;
@@ -228,6 +272,9 @@ public class Server {
                 se.initLaneStatus(rs.getString("sdlanedata"));
                 se.initEnemyStatus(rs.getString("enemylanedata"));
                 Sd = se;
+                CCactive=rs.getBoolean("ccactive");
+                Date da=rs.getTimestamp("ccdate");
+                CCstart=(da==null?null:da.toInstant());
 
             } else { //server is not in db
                 RRevent=new RREvent(guild);
@@ -256,6 +303,7 @@ public class Server {
 
                         boolean isDiscord = rs.getBoolean("isdiscord");
                         final boolean regToRR = rs.getBoolean("rr");
+                        final boolean regToCC = rs.getBoolean("cc");
                         final float pow= rs.getFloat("power");
                         final int RRteamNumber = rs.getInt("team");
                         final SDPos lane = SDPos.values()[rs.getInt("lane")];
@@ -264,6 +312,7 @@ public class Server {
                             pd.lane=lane;
                             pd.power=pow;
                             pd.registeredToRR=regToRR;
+                            pd.registeredToCC=regToCC;
                             pd.RRteam=RRteamNumber;
                             newDiscordMembers.put(uid,pd);
                         } else { // non discord participant
@@ -271,6 +320,7 @@ public class Server {
                             p.registeredToRR = regToRR;
                             p.power = pow;
                             p.RRteamNumber =RRteamNumber;
+                            p.registeredToCC=regToCC;
                             p.lane = lane;
                             sessions.put(uid, p);
                         }
@@ -296,6 +346,7 @@ public class Server {
                 p.RRteamNumber=pd.RRteam;
                 p.power=pd.power;
                 p.registeredToRR=pd.registeredToRR;
+                p.registeredToCC=pd.registeredToCC;
                 sessions.put(uid,p);
                 newDiscordMembers.remove(uid);
             } else { // user is in discord and not in DB (to be created later when he interacts)
@@ -427,13 +478,15 @@ public class Server {
 
     private static class queries  {
         final PreparedStatement deleteLocalRRParticipants,deleteLocalSDParticipants ,RRunregAll,selectParticipants,
-                selectRRevent,createServer,updateRR,closeE,openE,RRsaveTeam,SDsave,SDunregAll;
+                selectRRevent,createServer,updateRR,closeE,openE,RRsaveTeam,SDsave,SDunregAll,openCC,closeCC,CCunregAll;
+
         queries(Connection dbConnection)  throws SQLException {
             selectParticipants  = dbConnection.prepareStatement("SELECT * FROM members where server=?");
             deleteLocalRRParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane='0' and rr='t' ");
             deleteLocalSDParticipants =  dbConnection.prepareStatement("DELETE  from members where server=? and isdiscord='f' and lane!='0' and rr='f' ");
             SDunregAll = dbConnection.prepareStatement("UPDATE  members set lane='0' where server=?");
             RRunregAll = dbConnection.prepareStatement("UPDATE  members set rr='f', team='-1' where server=?");
+            CCunregAll = dbConnection.prepareStatement("UPDATE  members set cc='f' where server=?");
             selectRRevent = dbConnection.prepareStatement("SELECT * FROM servers where server=?");
             createServer = dbConnection.prepareStatement("INSERT INTO servers(server,active,teamsaved,sdthreshold,rrdate) VALUES(?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
             updateRR = dbConnection.prepareStatement("UPDATE servers set rrdate=?,active=?,teamsaved=? where server=?", Statement.RETURN_GENERATED_KEYS);
@@ -441,6 +494,8 @@ public class Server {
             openE = dbConnection.prepareStatement("UPDATE servers set active='t' where server=?", Statement.RETURN_GENERATED_KEYS);
             RRsaveTeam = dbConnection.prepareStatement("UPDATE  servers set teamsaved=? where server=?");
             SDsave = dbConnection.prepareStatement("UPDATE  servers set sdthreshold=?,sdlanedata=?,enemylanedata=?,sdactive=? where server=?");
+            openCC = dbConnection.prepareStatement("UPDATE  servers set CCactive='t',CCdate=? where server=?");
+            closeCC = dbConnection.prepareStatement("UPDATE  servers set CCactive='f',CCdate=NULL where server=?");
         }
 
     }

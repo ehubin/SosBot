@@ -10,6 +10,7 @@ public class ChannelAndCommands {
         register(new AnalysisCenterCommands());
         register(new TrapCommands());
         register(new ReservoirRaidCommands());
+        register(new CCCommands());
     }
     static private final HashSet<ChannelAndCommands> channelset=new HashSet<>();
     private final String topic,name;

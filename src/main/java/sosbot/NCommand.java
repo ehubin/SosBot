@@ -198,6 +198,20 @@ abstract  class NCommand<T> {
             }
         }
     }
+    static class readFloatCmd extends NCommand<Float> {
+        @Override
+        boolean matches(String content) { return content.trim().matches("\\d+(.\\d+)?"); }
+        @Override
+        Optional<Float> onMessage(MsgContext ctxt) {
+            try {
+                float read=Float.parseFloat(ctxt.content.trim());
+                log.info("readfloat "+read);
+                return Optional.of(read);
+            } catch (NumberFormatException e) {
+                throw new RecoverableError("Incorrect number format "+ctxt.content);
+            }
+        }
+    }
     static class yesNoCmd extends NCommand<Boolean> {
         @Override
         Optional<Boolean> onMessage(MsgContext ctxt) {
@@ -220,15 +234,12 @@ abstract  class NCommand<T> {
                 throw new RecoverableError("incorrect duration format <"+c.content+"> expecting somrthing like 1d 23:30:24");
             }
             int days=0;
-            boolean hasDays=false;
             if(ma.group(2)!= null) {
                 days=Integer.parseInt(ma.group(2));
-                hasDays=true;
             }
             int hours = Integer.parseInt(ma.group(3));
             if(hours<0 || hours>23) {
                 throw new RecoverableError("incorrect hour nb <"+ma.group(3)+">");
-
             }
             int minutes = Integer.parseInt(ma.group(4));
             if(minutes<0 || minutes>59) {
@@ -241,7 +252,7 @@ abstract  class NCommand<T> {
                     throw new RecoverableError("incorrect seconds nb <"+ma.group(6)+">");
                 }
             }
-            return Optional.of(Duration.ofSeconds((days*24+hours)*3600+minutes*60+seconds));
+            return Optional.of(Duration.ofSeconds((days*24L+hours)*3600+minutes*60+seconds));
         }
     }
 

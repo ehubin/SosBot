@@ -31,7 +31,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands {
             register(listChannels);
             register(testCountdown);
             init();
-            Notification.registerNotifType(NotifType.defendAC,new Notification(
+            Notification.registerNotifType(NotifType.defendAC,new Notification<Void>(
                     new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
                     (in)->{
                         getChannel(in.server).createMessage("@everyone Trap will take place in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n").subscribe();

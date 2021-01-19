@@ -2,7 +2,7 @@ package sosbot;
 
 import discord4j.core.object.entity.channel.MessageChannel;
 import lombok.extern.slf4j.Slf4j;
-import sosbot.ChannelAndCommands;
+
 
 import java.text.ParseException;
 import java.time.Duration;
@@ -22,7 +22,7 @@ public class TrapCommands extends ChannelAndCommands {
         register(stopNotifyCmd);
         register(infoCmd);
         init();
-        Notification.registerNotifType(NotifType.Trap,new Notification(
+        Notification.registerNotifType(NotifType.Trap,new Notification<Void>(
                 new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
                 (in)->{
                     getChannel(in.server).createMessage("@everyone Trap will take place in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+trapHelp).subscribe();
@@ -84,7 +84,7 @@ public class TrapCommands extends ChannelAndCommands {
             } else if(timings.size()>1) {
                 channel.createMessage("Error: Trap notifications active for "+timings.size()+" distinct times!!!").subscribe();
             } else {
-                Notification notif= Notification.getNotificationDescription(NotifType.Trap);
+                Notification<?> notif= Notification.getNotificationDescription(NotifType.Trap);
                 StringBuilder sb=new StringBuilder("Trap notifications are active for an event on ");
                 sb.append(timings.iterator().next()).append(" and every 48h after that. Reminders will be sent:\n");
                 for(Duration d:notif.reminderPattern) sb.append(Util.format(d)).append("\n");

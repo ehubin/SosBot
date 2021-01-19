@@ -2,7 +2,6 @@ package sosbot;
 
 import discord4j.core.object.entity.channel.MessageChannel;
 import lombok.extern.slf4j.Slf4j;
-import sosbot.ChannelAndCommands;
 
 import java.text.ParseException;
 import java.time.Duration;
@@ -28,14 +27,14 @@ public class ShowdownCommands extends ChannelAndCommands {
         register(new closeCmd());
         register(new nextWaveCmd());
         init();
-        Notification.registerNotifType(NotifType.SDnextWave,new Notification(
+        Notification.registerNotifType(NotifType.SDnextWave,new Notification<Void>(
                 new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
                 (in) ->{
                     getChannel(in.server).createMessage("@R4 showdown swapping phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute").subscribe();
                     log.info("sending SD next wave notif for minus "+in.before.toString());
                 }
         ));
-        Notification.registerNotifType(NotifType.SDcloseReg,new Notification(
+        Notification.registerNotifType(NotifType.SDcloseReg,new Notification<Void>(
                 new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
                 (in) ->{
                     getChannel(in.server).createMessage("@everyone showdown registration phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+SDRegText).subscribe();

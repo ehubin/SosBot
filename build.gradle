@@ -17,6 +17,7 @@ dependencies {
     implementation ('ch.qos.logback:logback-classic:1.2.3')
     //implementation('org.slf4j:slf4j-simple:2.0.0-alpha1')
     implementation('com.squareup:gifencoder:0.10.1')
+    implementation 'com.google.code.findbugs:jsr305:3.0.2' //to remove javax.annotation warnings
 
     implementation 'com.discord4j:discord4j-core:3.1.1'
     compile group: 'org.postgresql', name: 'postgresql', version: '42.2.18'

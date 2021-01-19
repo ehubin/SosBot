@@ -3,6 +3,7 @@ package sosbot;
 import io.timeandspace.cronscheduler.CronScheduler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
+import reactor.util.annotation.Nullable;
 
 import java.sql.*;
 import java.time.*;
@@ -15,23 +16,24 @@ import java.util.stream.Collectors;
 
 enum NotifType { SDcloseReg,SDnextWave,RRcloseReg, RRevent, defendAC, Trap}
 @Slf4j
-public  class Notification {
+public  class Notification<T> {
     static final CronScheduler scheduler=CronScheduler.create(Duration.ofMinutes(1));
-    static private final HashMap<NotifType,Notification> notifMap=new HashMap<>();
+    static private final HashMap<NotifType,Notification<?>> notifMap=new HashMap<>();
     static private final HashMap<ServerNotifTime, List<Future<?>>> activeNotifs = new HashMap<>();
     static private final HashMap<ServerNotif, Set<Instant>> notifIndex = new HashMap<>();
 
     //*********************Fields***************************************************************
     Duration[] reminderPattern;
-    Consumer<NotificationInput> callback;
+    Consumer<NotificationInput<T>> callback;
     Duration period=null;
 
 
-    public Notification(Duration[] reminderPattern, Consumer<NotificationInput> callback) {
+
+    public Notification(Duration[] reminderPattern, Consumer<NotificationInput<T>> callback) {
         this.reminderPattern=reminderPattern;
         this.callback = callback;
     }
-    public Notification(Duration[] reminderPattern, Consumer<NotificationInput> callback, Duration period) {
+    public Notification(Duration[] reminderPattern, Consumer<NotificationInput<T>> callback, Duration period) {
         this.reminderPattern=reminderPattern;
         this.callback = callback;
         this.period=period;
@@ -56,11 +58,11 @@ public  class Notification {
         return res;
     }
     @SuppressWarnings("SameParameterValue")
-    static Notification getNotificationDescription(NotifType type) {
+    static Notification<?> getNotificationDescription(NotifType type) {
         return notifMap.get(type);
     }
 
-    static void registerNotifType(NotifType t,Notification notif) {
+    static void registerNotifType(NotifType t,Notification<?> notif) {
         notifMap.put(t,notif);
     }
 
@@ -176,7 +178,13 @@ public  class Notification {
         scheduleNotif(type,srv,basetime,true,cancelPrevious);
     }
     static void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious) {
-        Notification notif=notifMap.get(type);
+        scheduleNotif(type,srv,basetime,updateDB,cancelPrevious, null);
+    }
+    static <T> void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious, @Nullable T data) {
+        @SuppressWarnings("unchecked")
+        Notification<T> notif= (Notification<T>) notifMap.get(type);
+
+
         if(notif==null) {
             log.error("Notification not found for " + type);
             return;
@@ -219,7 +227,7 @@ public  class Notification {
                 if (now.isAfter(event)) {
                     log.warn("Dropping " + type + " notif  for duratioin minus " + Util.format(d));
                 } else {
-                    NotificationInput in = new NotificationInput(d, basetime, srv);
+                    NotificationInput<T> in = new NotificationInput<>(d, basetime, srv,data);
                     taskList.add(scheduler.scheduleAt(Instant.from(basetime.minus(d)), () -> {
                         try {
                             notif.callback.accept(in);
@@ -231,7 +239,7 @@ public  class Notification {
             }
         } else { // periodic task
             for(Duration d:notif.reminderPattern) {
-                NotificationInput in=new NotificationInput(d,basetime,srv);
+                NotificationInput<T> in=new NotificationInput<>(d,basetime,srv,data);
                 Duration delay= Duration.between(now,Instant.from(basetime.minus(d)));
                 while(delay.isNegative()) {
                     delay = delay.plus(notif.period);
@@ -313,11 +321,16 @@ public  class Notification {
         }
     }
 
-    static class NotificationInput {
-        NotificationInput(Duration before, Instant basetime, Server s) { this.before=before; this.basetime=basetime; server=s;}
+    static class NotificationInput<T> {
+        NotificationInput(Duration before, Instant basetime, Server s) {
+            this.before=before; this.basetime=basetime; server=s;data=Optional.empty();
+        }
+        NotificationInput(Duration before, Instant basetime, Server s,T data) {
+            this.before=before; this.basetime=basetime; server=s;this.data =data==null?Optional.empty():Optional.of(data);}
         Duration before;
         Instant basetime;
         Server server;
+        Optional<T> data;
     }
 
 }

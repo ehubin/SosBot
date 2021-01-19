@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class Participant {
+
     boolean isDiscord;
     long uid;
     final private String name; //for local users only
@@ -20,6 +21,7 @@ public class Participant {
     Server server;
     float power=0.0f;
     boolean registeredToRR =false;
+    boolean registeredToCC=false;
     int RRteamNumber =-1;
     SDPos lane= SDPos.Undef;
     // create a discord-based participant
@@ -68,6 +70,7 @@ public class Participant {
                 insertP.setLong(6, uid);
                 insertP.setBoolean(7, registeredToRR);
                 insertP.setBoolean(8, isDiscord);
+                insertP.setBoolean(8, registeredToCC);
                 insertP.executeUpdate();
             }
         } catch(SQLException e) {
@@ -88,8 +91,9 @@ public class Participant {
                 updateP.setInt(4, lane.ordinal());
                 updateP.setBoolean(5, registeredToRR);
                 updateP.setBoolean(6, isDiscord);
-                updateP.setLong(7, uid);
-                updateP.setLong(8, getGuildId());
+                updateP.setBoolean(7, registeredToCC);
+                updateP.setLong(8, uid);
+                updateP.setLong(9, getGuildId());
                 updateP.executeUpdate();
             }
         } catch(SQLException e) {
@@ -191,19 +195,41 @@ public class Participant {
 
     private static queries _Q;
     static void initQueries(Connection db) throws SQLException { _Q=new Participant.queries(db); }
+
+    public boolean registerCC(float power) {
+        try {
+            synchronized (_Q.CCreg) {
+                PreparedStatement q=_Q.CCreg;
+                q.setFloat(1,power);
+                q.setLong(2,server.getId());
+                q.setLong(3,getUid());
+                q.executeUpdate();
+            }
+        } catch(SQLException e) {
+            log.error("CC registration db error",e);
+            SosBot.checkDBConnection();
+            return false;
+        }
+        this.power=power;
+        this.registeredToCC=true;
+        return true;
+    }
+
     private static class queries  {
-        final PreparedStatement insertP,updateP,updateRRreg,updateRRTeam,updateSDLane,deleteOne;
+        final PreparedStatement insertP,updateP,updateRRreg,updateRRTeam,updateSDLane,deleteOne,CCreg;
         queries(Connection db)  throws SQLException {
-            insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING", Statement.RETURN_GENERATED_KEYS);
-            updateP = db.prepareStatement("UPDATE members set name=?,power=?,team=?,lane=?,rr=?,isdiscord=? where uid=? and server=?", Statement.RETURN_GENERATED_KEYS);
+            insertP = db.prepareStatement("INSERT INTO members(name,power,server,team,lane,uid,rr,isdiscord,cc) VALUES(?,?,?,?,?,?,?,?.?) ON CONFLICT DO NOTHING", Statement.RETURN_GENERATED_KEYS);
+            updateP = db.prepareStatement("UPDATE members set name=?,power=?,team=?,lane=?,rr=?,isdiscord=?,cc=? where uid=? and server=?", Statement.RETURN_GENERATED_KEYS);
             updateRRreg =  db.prepareStatement("UPDATE  members set rr=?,power=? where server=? and uid=?");
             updateRRTeam =  db.prepareStatement("UPDATE  members set team=?,name=?,rr=? where server=? and uid=?");
             updateSDLane =  db.prepareStatement("UPDATE  members set lane=?,power=? where server=? and uid=?");
             deleteOne = db.prepareStatement("DELETE  from members  where server=? and uid=?");
+            CCreg = db.prepareStatement("UPDATE  members set cc='t',power=? where server=? and uid=?");
         }
 
     }
     static class data {
+        boolean registeredToCC;
         boolean registeredToRR;
         SDPos lane;
         float power;

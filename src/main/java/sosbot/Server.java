@@ -35,6 +35,7 @@ enum SDPos { Undef,Left,Center,Right}
 @Slf4j
 public class Server {
     private static final HashMap<Snowflake,Server> KnownServers=new HashMap<>();
+    private  AtomicBoolean inInitMethod=new AtomicBoolean(false);
 
     private final HashMap<ChannelPartKey, Command> followUpCmd=new HashMap<>();
     private final HashMap<ChannelPartKey, NCommand<?>> FollowupNCommand=new HashMap<>();
@@ -91,6 +92,7 @@ public class Server {
         return  sessions.values().stream().filter(i -> i.lane != SDPos.Undef)
                 .sorted(Comparator.comparingDouble(Participant::getPower).reversed());
     }
+    @SuppressWarnings("SameParameterValue")
     Stream<Participant> getRegisteredCCparticipants(boolean reversed) {
         Comparator<Participant> comp= Comparator.comparingDouble(Participant::getPower);
         if(reversed) comp=comp.reversed();
@@ -291,7 +293,14 @@ public class Server {
                     createServer.executeUpdate();
                 }
             }
-            updateDiscordServerAtFirstConnection();
+
+            // only one execution of this at a time
+            if(!inInitMethod.compareAndExchange(false,true)) {
+                    log.info("init method for "+guild.getName());
+                    updateDiscordServerAtFirstConnection();
+            } else {
+                log.info("initMethod was busy for "+guild.getName());
+            }
 
             synchronized (_Q.selectParticipants) {
                 _Q.selectParticipants.setLong(1, getId());
@@ -370,7 +379,7 @@ public class Server {
         Arrays.setAll(found,(i)->new AtomicBoolean());
 
         AtomicReference<Snowflake> parentId=new AtomicReference<>();
-        guild.getChannels(EntityRetrievalStrategy.REST).doOnNext(c->{
+        guild.getChannels().doOnNext(c->{
             int i=0;
             for(ChannelAndCommands cac:clist) {
                 if(c.getName().equals(cac.getDefaulName())) {
@@ -397,11 +406,12 @@ public class Server {
                             });
                         }
                     }
+                    inInitMethod.set(false);
                 })).subscribe();
 
         //create R4 role if it does not already exists
         AtomicBoolean foundR4 = new AtomicBoolean(false);
-        guild.getRoles(EntityRetrievalStrategy.REST).doOnNext(r->{
+        guild.getRoles().doOnNext(r->{
             if(r.getName().equals("R4")) {
                 foundR4.set(true);
                 R4roleId = r.getId();

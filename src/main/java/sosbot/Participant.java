@@ -70,7 +70,7 @@ public class Participant {
                 insertP.setLong(6, uid);
                 insertP.setBoolean(7, registeredToRR);
                 insertP.setBoolean(8, isDiscord);
-                insertP.setBoolean(8, registeredToCC);
+                insertP.setBoolean(9, registeredToCC);
                 insertP.executeUpdate();
             }
         } catch(SQLException e) {

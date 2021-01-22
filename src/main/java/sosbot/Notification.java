@@ -3,6 +3,7 @@ package sosbot;
 import io.timeandspace.cronscheduler.CronScheduler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
+import reactor.core.publisher.Mono;
 import reactor.util.annotation.Nullable;
 
 import java.sql.*;
@@ -11,39 +12,164 @@ import java.util.*;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
 enum NotifType { SDcloseReg,SDnextWave,RRcloseReg, RRevent, defendAC, Trap}
 @Slf4j
-public  class Notification<T> {
+public  class Notification<T extends dbready> {
     static final CronScheduler scheduler=CronScheduler.create(Duration.ofMinutes(1));
-    static private final HashMap<NotifType,Notification<?>> notifMap=new HashMap<>();
+    static final Notification<?>[] All=new Notification[NotifType.values().length];
     static private final HashMap<ServerNotifTime, List<Future<?>>> activeNotifs = new HashMap<>();
     static private final HashMap<ServerNotif, Set<Instant>> notifIndex = new HashMap<>();
 
     //*********************Fields***************************************************************
     Duration[] reminderPattern;
     Consumer<NotificationInput<T>> callback;
-    Duration period=null;
+    Duration period;
+    NotifType type;
+    Function<String,T> dbFactory;
 
-
-
-    public Notification(Duration[] reminderPattern, Consumer<NotificationInput<T>> callback) {
-        this.reminderPattern=reminderPattern;
-        this.callback = callback;
+    public Notification(NotifType type,Duration[] reminderPattern, Consumer<NotificationInput<T>> callback,Function<String,T> dbfactory) {
+        this(type,reminderPattern,callback,null,dbfactory);
     }
-    public Notification(Duration[] reminderPattern, Consumer<NotificationInput<T>> callback, Duration period) {
+    public Notification(NotifType type,Duration[] reminderPattern, Consumer<NotificationInput<T>> callback) {
+        this(type,reminderPattern,callback,null,null);
+    }
+    public Notification(NotifType type,Duration[] reminderPattern, Consumer<NotificationInput<T>> callback, Duration period) {
+        this(type,reminderPattern,callback,period,null);
+    }
+    public Notification(NotifType type,Duration[] reminderPattern, Consumer<NotificationInput<T>> callback, Duration period,Function<String,T> dbfactory) {
         this.reminderPattern=reminderPattern;
         this.callback = callback;
         this.period=period;
+        this.type=type;
+        this.dbFactory=dbfactory;
+        if(All[type.ordinal()] == null) All[type.ordinal()] = this;
+        else throw new Util.UnrecoverableError("2 objects for notif type "+type);
+    }
+
+    T buildData(String dbStr) { return dbStr==null?null:dbFactory.apply(dbStr);}
+
+    void scheduleNotif(NotifType type, Server srv, Instant basetime) {
+        scheduleNotif(type,srv,basetime,true,true);
+    }
+    @SuppressWarnings({"SameParameterValue", "unused"})
+    void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean cancelPrevious) {
+        scheduleNotif(type,srv,basetime,true,cancelPrevious);
+    }
+    void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious) {
+        scheduleNotif(type,srv,basetime,updateDB,cancelPrevious, (T)null);
+    }
+    void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious, @Nullable String data) {
+        scheduleNotif(type,srv,basetime,updateDB,cancelPrevious,buildData(data));
+    }
+
+    void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious, @Nullable T data) {
+
+
+        ServerNotif sn=new ServerNotif(srv,type);
+        if(cancelPrevious) {
+            sn.cancelAll();
+        }
+        ServerNotifTime sno = new ServerNotifTime(srv,type,basetime);
+        List<Future<?>> activeTasks = activeNotifs.get(sno);
+        if(updateDB) {
+            if (activeTasks != null) {
+                for (Future<?> ft : activeTasks) ft.cancel(false);
+                // persist in DB to resist process outages
+                try {
+                    synchronized (_Q.updateNotif) {
+                        PreparedStatement n = _Q.updateNotif;
+                        n.setTimestamp(1, Timestamp.from(basetime));
+                        n.setLong(2, srv.getId());
+                        n.setString(3, type.name());
+                        n.setString(4, data!= null?data.serialize():null);
+                        n.executeUpdate();
+
+                    }
+                } catch (SQLException e) {
+                    log.error("Notif db save error", e);
+                    SosBot.checkDBConnection();
+                }
+            } else {
+                // persist in DB to resist process outages
+                sno.createInDb(data!= null?data.serialize():null);
+            }
+        }
+
+        Instant now=Instant.now();
+        List<Future<?>> taskList=new ArrayList<>();
+
+        if(period == null) { //one-off task
+            for(Duration d:reminderPattern) {
+                Instant event = Instant.from(basetime.minus(d));
+                if (now.isAfter(event)) {
+                    log.warn("Dropping " + type + " notif  for duratioin minus " + Util.format(d));
+                } else {
+                    NotificationInput<T> in = new NotificationInput<>(d, basetime, srv,data);
+                    taskList.add(scheduler.scheduleAt(Instant.from(basetime.minus(d)), () -> {
+                        try {
+                            callback.accept(in);
+                        } catch (Throwable t) {
+                            log.error("Uncaught exception while running scheduled " + type + "task ", t);
+                        }
+                    }));
+                }
+            }
+        } else { // periodic task
+            for(Duration d:reminderPattern) {
+                NotificationInput<T> in=new NotificationInput<>(d,basetime,srv,data);
+                Duration delay= Duration.between(now,Instant.from(basetime.minus(d)));
+                while(delay.isNegative()) {
+                    delay = delay.plus(period);
+                    in.basetime = in.basetime.plus(period);
+                }
+                taskList.add(scheduler.scheduleAtFixedRate(delay.getSeconds(),period.getSeconds(), TimeUnit.SECONDS
+                        ,(long scheduledTime) -> {
+                            try {
+                                in.basetime= Instant.ofEpochMilli(scheduledTime).plus(in.before);
+                                callback.accept(in);
+                            } catch (Throwable t) {
+                                log.error("Uncaught exception while running scheduled " + type + "task ", t);
+                            }
+                        }));
+
+            }
+        }
+        if(taskList.size() >0) {
+            activeNotifs.put(sno,taskList);
+            new ServerNotif(srv,type).register(basetime);
+            log.info("Created notification for "+sno);
+        }
+        else{
+            log.warn("Did not schedule any task for "+type);
+            //cleanup
+            synchronized (_Q.deleteNotif) {
+                try {
+                    _Q.deleteNotif.setLong(1, srv.getId());
+                    _Q.deleteNotif.setString(2,type.name());
+                    _Q.deleteNotif.setTimestamp(3,java.sql.Timestamp.from(basetime));
+                    int nb;
+                    if((nb=_Q.deleteNotif.executeUpdate()) != 1) {
+                        log.error("notif cleanup cleaned "+nb+" items!!");
+                    }
+                    activeNotifs.remove(sno);
+                    new ServerNotif(srv,type).unregister(basetime);
+                } catch(SQLException e) {
+                    log.error("notif cleanup DB error",e);
+                    SosBot.checkDBConnection();
+                }
+            }
+        }
     }
 
     @SuppressWarnings("SameParameterValue")
     static Set<Instant> getNotifs(NotifType type, Server srv) {
         Set<Instant> res = notifIndex.get(new ServerNotif(srv,type));
         if(res==null) res=Set.of();
-        final Duration theperiod =notifMap.get(type).period;
+        final Duration theperiod =All[type.ordinal()].period;
         if( theperiod!= null) {
             Instant now=Instant.now();
             return res.stream().map((i)->{
@@ -59,12 +185,9 @@ public  class Notification<T> {
     }
     @SuppressWarnings("SameParameterValue")
     static Notification<?> getNotificationDescription(NotifType type) {
-        return notifMap.get(type);
+        return All[type.ordinal()];
     }
 
-    static void registerNotifType(NotifType t,Notification<?> notif) {
-        notifMap.put(t,notif);
-    }
 
     public static int cancelAllNotifs(NotifType type, Server curServer) {
         ServerNotif sn=new ServerNotif(curServer,type);
@@ -135,13 +258,14 @@ public  class Notification<T> {
             HashCodeBuilder hcb = new HashCodeBuilder();
             return hcb.append(srv.getId()).append(type).append(time.getEpochSecond()).hashCode();
         }
-        public void createInDb() {
+        public void createInDb(String data) {
             try {
                 synchronized (_Q.insertNotif) {
                     PreparedStatement n = _Q.insertNotif;
                     n.setLong(1, srv.getId());
                     n.setString(2, type.name());
                     n.setTimestamp(3, Timestamp.from(time));
+                    n.setString(4,data);
                     n.executeUpdate();
                 }
             } catch (SQLException e) {
@@ -170,120 +294,8 @@ public  class Notification<T> {
             }
         }
     }
-    static void scheduleNotif(NotifType type, Server srv, Instant basetime) {
-        scheduleNotif(type,srv,basetime,true,true);
-    }
-    @SuppressWarnings({"SameParameterValue", "unused"})
-    static void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean cancelPrevious) {
-        scheduleNotif(type,srv,basetime,true,cancelPrevious);
-    }
-    static void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious) {
-        scheduleNotif(type,srv,basetime,updateDB,cancelPrevious, null);
-    }
-    static <T> void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious, @Nullable T data) {
-        @SuppressWarnings("unchecked")
-        Notification<T> notif= (Notification<T>) notifMap.get(type);
 
-
-        if(notif==null) {
-            log.error("Notification not found for " + type);
-            return;
-        }
-        ServerNotif sn=new ServerNotif(srv,type);
-        if(cancelPrevious) {
-            sn.cancelAll();
-        }
-        ServerNotifTime sno = new ServerNotifTime(srv,type,basetime);
-        List<Future<?>> activeTasks = activeNotifs.get(sno);
-        if(updateDB) {
-            if (activeTasks != null) {
-                for (Future<?> ft : activeTasks) ft.cancel(false);
-                // persist in DB to resist process outages
-                try {
-                    synchronized (_Q.updateNotif) {
-                        PreparedStatement n = _Q.updateNotif;
-                        n.setTimestamp(1, Timestamp.from(basetime));
-                        n.setLong(2, srv.getId());
-                        n.setString(3, type.name());
-                        n.executeUpdate();
-
-                    }
-                } catch (SQLException e) {
-                    log.error("Notif db save error", e);
-                    SosBot.checkDBConnection();
-                }
-            } else {
-                // persist in DB to resist process outages
-                sno.createInDb();
-            }
-        }
-
-        Instant now=Instant.now();
-        List<Future<?>> taskList=new ArrayList<>();
-
-        if(notif.period == null) { //one-off task
-            for(Duration d:notif.reminderPattern) {
-                Instant event = Instant.from(basetime.minus(d));
-                if (now.isAfter(event)) {
-                    log.warn("Dropping " + type + " notif  for duratioin minus " + Util.format(d));
-                } else {
-                    NotificationInput<T> in = new NotificationInput<>(d, basetime, srv,data);
-                    taskList.add(scheduler.scheduleAt(Instant.from(basetime.minus(d)), () -> {
-                        try {
-                            notif.callback.accept(in);
-                        } catch (Throwable t) {
-                            log.error("Uncaught exception while running scheduled " + type + "task ", t);
-                        }
-                    }));
-                }
-            }
-        } else { // periodic task
-            for(Duration d:notif.reminderPattern) {
-                NotificationInput<T> in=new NotificationInput<>(d,basetime,srv,data);
-                Duration delay= Duration.between(now,Instant.from(basetime.minus(d)));
-                while(delay.isNegative()) {
-                    delay = delay.plus(notif.period);
-                    in.basetime = in.basetime.plus(notif.period);
-                }
-                taskList.add(scheduler.scheduleAtFixedRate(delay.getSeconds(),notif.period.getSeconds(), TimeUnit.SECONDS
-                    ,(long scheduledTime) -> {
-                        try {
-                            in.basetime= Instant.ofEpochMilli(scheduledTime).plus(in.before);
-                            notif.callback.accept(in);
-                        } catch (Throwable t) {
-                            log.error("Uncaught exception while running scheduled " + type + "task ", t);
-                        }
-                    }));
-
-            }
-        }
-        if(taskList.size() >0) {
-            activeNotifs.put(sno,taskList);
-            new ServerNotif(srv,type).register(basetime);
-            log.info("Created notification for "+sno);
-        }
-        else{
-            log.warn("Did not schedule any task for "+type);
-            //cleanup
-            synchronized (_Q.deleteNotif) {
-                try {
-                    _Q.deleteNotif.setLong(1, srv.getId());
-                    _Q.deleteNotif.setString(2,type.name());
-                    _Q.deleteNotif.setTimestamp(3,java.sql.Timestamp.from(basetime));
-                    int nb;
-                    if((nb=_Q.deleteNotif.executeUpdate()) != 1) {
-                        log.error("notif cleanup cleaned "+nb+" items!!");
-                    }
-                    activeNotifs.remove(sno);
-                    new ServerNotif(srv,type).unregister(basetime);
-                } catch(SQLException e) {
-                    log.error("notif cleanup DB error",e);
-                    SosBot.checkDBConnection();
-                }
-            }
-        }
-    }
-    static void initFromDb() {
+    static void initFromDb(Server srv) {
         //cancel everything
         for(List<Future<?>> lf:activeNotifs.values()) {
             for (Future<?> f : lf) {
@@ -295,13 +307,20 @@ public  class Notification<T> {
 
         try {
             synchronized(_Q.getAllNotifs) {
+                _Q.getAllNotifs.setLong(1,srv.getId());
                 ResultSet rs=_Q.getAllNotifs.executeQuery();
 
                 while(rs.next()) {
                     final Instant inst = rs.getTimestamp("basetime").toInstant();
                     final NotifType nt=NotifType.valueOf(rs.getString("notif"));
-                    Server.getServerFromId(rs.getLong("server")).subscribe((s)-> scheduleNotif(nt,s,inst,false,false));
-
+                    final String dataStr=rs.getString("data");
+                    final Notification<?> notif=All[nt.ordinal()];
+                    notif.scheduleNotif(nt,
+                            srv,
+                            inst,
+                            false,
+                            false,
+                            dataStr);
                 }
             }
         } catch(SQLException e) {
@@ -314,23 +333,31 @@ public  class Notification<T> {
     private static class queries {
         final PreparedStatement insertNotif,updateNotif,getAllNotifs,deleteNotif;
         queries(Connection db) throws SQLException {
-            insertNotif = db.prepareStatement("insert into notifications(server,notif,basetime) values(?,?,?)");
+            insertNotif = db.prepareStatement("insert into notifications(server,notif,basetime,data) values(?,?,?,?)");
             updateNotif = db.prepareStatement("update notifications set basetime=? where server=? and notif=?");
-            getAllNotifs =db.prepareStatement( "select * from notifications");
+            getAllNotifs =db.prepareStatement( "select * from notifications where server=?");
             deleteNotif=db.prepareStatement( "delete from notifications where server=? and notif=? and basetime=?");
         }
     }
 
     static class NotificationInput<T> {
         NotificationInput(Duration before, Instant basetime, Server s) {
-            this.before=before; this.basetime=basetime; server=s;data=Optional.empty();
+            this.before=before; this.basetime=basetime; server=s;data=null;
         }
         NotificationInput(Duration before, Instant basetime, Server s,T data) {
-            this.before=before; this.basetime=basetime; server=s;this.data =data==null?Optional.empty():Optional.of(data);}
+            this.before=before; this.basetime=basetime; server=s;this.data = data;}
         Duration before;
         Instant basetime;
         Server server;
-        Optional<T> data;
+        T data;
     }
-
+}
+interface dbready {
+    String serialize();
+}
+class Empty implements dbready {
+    @Override
+    public String serialize() {
+        return null;
+    }
 }

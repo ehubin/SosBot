@@ -27,7 +27,24 @@ import static sosbot.Util.i18n;
 public class ReservoirRaidCommands extends ChannelAndCommands {
     static final String name ="\uD83D\uDCA6reservoir-raid\uD83D\uDCA6";
     static final String topic = i18n.getString("RRtopic");
-
+    final Notification<Empty> RRcloseReg = new Notification<>(
+            NotifType.RRcloseReg,
+            new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+            (in) ->{
+                getChannel(in.server).createMessage("@everyone Reservoir raid registration closes in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Go and register yourself if you want to participate").subscribe();
+                log.info("sending SD next wave notif for minus "+in.before.toString());
+            });
+    final Notification<Empty> RRevent =new Notification<>(
+    NotifType.RRevent,
+            new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+            (in) -> notifyRR(in.server).onErrorResume((e)-> {
+                if (e instanceof RecoverableError) {
+                    log.error("RR notif error: "+e.getMessage());
+                    return Mono.empty();
+                } else return Mono.error(e);
+            }).switchIfEmpty(Flux.empty().doOnComplete(() -> log.error("there were no elements")).cast(String.class))
+            .reduce((s1, s2)->s1+", "+s2).doOnSuccess((s) ->{if(s!= null && s.length() >0) log.info("Sent RR notif to "+s);}).subscribe()
+        );
     ReservoirRaidCommands() {
         super(name,topic);
         register(new HelpCommand());
@@ -44,27 +61,9 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
         register(unregCmd);
         register(notifyCmd);
         init();
-
-        Notification.registerNotifType(NotifType.RRcloseReg,new Notification<Void>(
-                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
-                (in) ->{
-                    getChannel(in.server).createMessage("@everyone Reservoir raid registration closes in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Go and register yourself if you want to participate").subscribe();
-                    log.info("sending SD next wave notif for minus "+in.before.toString());
-                }
-        ));
-        Notification.registerNotifType(NotifType.RRevent,new Notification<Void>(
-                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
-                (in) -> notifyRR(in.server).onErrorResume((e)-> {
-                    if (e instanceof RecoverableError) {
-                        log.error("RR notif error: "+e.getMessage());
-                        return Mono.empty();
-                    } else return Mono.error(e);
-                }).switchIfEmpty(Flux.empty().doOnComplete(() -> log.error("there were no elements")).cast(String.class))
-                        .reduce((s1, s2)->s1+", "+s2).doOnSuccess((s) ->{if(s!= null && s.length() >0) log.info("Sent RR notif to "+s);}).subscribe()
-        ));
     }
 
-    static Command unregCmd = new RegexCommand("unreg\\s+(\\d+)",
+    Command unregCmd = new RegexCommand("unreg\\s+(\\d+)",
             new Command.BaseData(true,"unreg <number>","cancels registration for another user by providing his number from list command")) {
 
         @Override
@@ -94,7 +93,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             }
         }
     };
-    static Command registerCmd = new SimpleCommand("register",
+    Command registerCmd = new SimpleCommand("register",
             new Command.BaseData(false,"register","Registers yourself to next reservoir raid event")) {
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer)  {
@@ -159,7 +158,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             }
         };
     };
-    static Command listCmd = new SimpleCommand("list",
+    Command listCmd = new SimpleCommand("list",
             new Command.BaseData(false,"list","Diplays a list of currently registered people")) {
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
@@ -179,7 +178,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             channel.createMessage(sb.toString()).subscribe();
         }
     };
-    static Command closeCmd = new SimpleCommand("close",
+    Command closeCmd = new SimpleCommand("close",
             new Command.BaseData(true,"close","Closes the registration process")) {
 
         @Override
@@ -206,7 +205,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             }
         };
     };
-    static Command reopenCmd = new SimpleCommand("reopen",
+    Command reopenCmd = new SimpleCommand("reopen",
             new Command.BaseData(true,"reopen","Re-opens the registration process")) {
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
@@ -217,7 +216,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             }
         }
     };
-    static Command teamsCmd = new SimpleCommand("teams",
+    Command teamsCmd = new SimpleCommand("teams",
             new Command.BaseData(false,"teams","Gives a breakdown of participants into teams")) {
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
@@ -301,7 +300,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
         };
 
     };
-    static Command showmapCmd = new SimpleCommand("showmap",
+    Command showmapCmd = new SimpleCommand("showmap",
             new Command.BaseData(false,"showmap","Displays a map of the game suggesting team placements")) {
 
         @Override
@@ -335,7 +334,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
         }
     };
 
-    static Command createCmd = new SimpleCommand("create",
+    Command createCmd = new SimpleCommand("create",
             new Command.BaseData(true,"create","Creates the next reservoir raid event and erases the previous one")) {
 
         @Override
@@ -396,7 +395,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
                     return;
                 }
                 // create notifications
-                Notification.scheduleNotif(NotifType.RRcloseReg,curServer,regTime);
+                RRcloseReg.scheduleNotif(NotifType.RRcloseReg,curServer,regTime);
 
                 curServer.removeFollowupCmd(channel,participant);
                 channel.createMessage("Event \"" + curServer.RRevent + "\" now live!").subscribe();
@@ -405,7 +404,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
 
     };
 
-    static Command swapCmd = new RegexCommand(Pattern.compile("swap\\s+(\\d).(\\d+)\\s+(\\d).(\\d+)",Pattern.CASE_INSENSITIVE),
+    Command swapCmd = new RegexCommand(Pattern.compile("swap\\s+(\\d).(\\d+)\\s+(\\d).(\\d+)",Pattern.CASE_INSENSITIVE),
             new Command.BaseData(true,"swap x.y z.t","Swaps player y in team x with player t in team z")) {
 
         @Override
@@ -451,7 +450,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             }
         }
     };
-    static Command moveCmd = new RegexCommand(Pattern.compile("move\\s+(\\d).(\\d+)\\s+(\\d)",Pattern.CASE_INSENSITIVE),
+    Command moveCmd = new RegexCommand(Pattern.compile("move\\s+(\\d).(\\d+)\\s+(\\d)",Pattern.CASE_INSENSITIVE),
             new Command.BaseData(true,"move x.y z","Swaps player y in team x  in team z")) {
 
         @Override
@@ -493,7 +492,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             }
         }
     };
-    static Command r4regCmd = new RegexCommand(Pattern.compile("r4reg\\s+(.*\\S)\\s+(\\d+.?\\d*)",Pattern.CASE_INSENSITIVE),
+    Command r4regCmd = new RegexCommand(Pattern.compile("r4reg\\s+(.*\\S)\\s+(\\d+.?\\d*)",Pattern.CASE_INSENSITIVE),
             new Command.BaseData(true,"r4reg <name> <power>","Registers a participant who did/can not go through the bot")) {
 
         @Override
@@ -526,7 +525,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
             }
         }
     };
-    static Command notifyCmd = new SimpleCommand("notify",
+    Command notifyCmd = new SimpleCommand("notify",
             new Command.BaseData(true,"notify","R4 can use this command to send everyone their team info for next RR")) {
 
         @Override
@@ -535,7 +534,7 @@ public class ReservoirRaidCommands extends ChannelAndCommands {
                 channel.createMessage("You have to save teams and close registration before notifying people").subscribe();
                 return;
             }
-            Notification.scheduleNotif(NotifType.RRevent,curServer,curServer.RRevent.date);
+            RRevent.scheduleNotif(NotifType.RRevent,curServer,curServer.RRevent.date);
             notifyRR(curServer).onErrorResume((e)->{
                if(e instanceof RecoverableError) {
                    channel.createMessage(e.getMessage()).subscribe();

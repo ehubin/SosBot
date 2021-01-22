@@ -5,18 +5,23 @@ import org.apache.commons.lang.builder.HashCodeBuilder;
 
 
 import java.sql.*;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Slf4j
-public class AnalysisCenter {
+public class AnalysisCenter implements dbready {
+
+
+
     enum Type { Battle,Weapon,Construction,Production,Gathering,Research,Vehicle}
 
 
     private static final HashMap<Long,Set<AnalysisCenter>> ACMap=new HashMap<>();
-
+    long dbid;
     Type type;
     int level;
     Server server;
@@ -47,6 +52,9 @@ public class AnalysisCenter {
         HashCodeBuilder hcb=new HashCodeBuilder();
         return hcb.append(level).append(server.getId()).append(type.ordinal()).hashCode();
     }
+    public Instant nextDefend() {
+        return challenged? nextChange.plus(Duration.ofDays(3L)):nextChange;
+    }
 
 
     static void initFromDb(Server s) {
@@ -54,7 +62,7 @@ public class AnalysisCenter {
             synchronized (_Q.getAll) {
                 _Q.getAll.setLong(1, s.getId());
                 ResultSet rs=_Q.getAll.executeQuery();
-                ACMap.computeIfAbsent(s.getId(), k -> new HashSet<>());
+
                 while(rs.next()) {
                     AnalysisCenter ac=new AnalysisCenter(
                             Type.values()[rs.getInt("type")],
@@ -64,7 +72,9 @@ public class AnalysisCenter {
                             rs.getBoolean("ours"),
                             Instant.ofEpochMilli(rs.getTimestamp("next").getTime())
                             );
-                    ACMap.get(s.getId()).add(ac);
+                    ac.dbid=rs.getLong("id");
+                    Set<AnalysisCenter> set=ACMap.computeIfAbsent(s.getId(), k -> new LinkedHashSet<>());
+                    set.add(ac);
                 }
             }
         } catch(SQLException e) {
@@ -74,7 +84,7 @@ public class AnalysisCenter {
     }
     static AnalysisCenter create(Type t, int lvl, Server server, boolean challenged, boolean ours, Instant next) throws SQLException{
         AnalysisCenter res=new AnalysisCenter(t,lvl,server,challenged,ours,next);
-        if(res.alreadyExists()) throw new RecoverableError("Analysis center "+res+"already exists");
+        if(res.alreadyExists()) throw new RecoverableError("Error: Analysis center "+res+"\nalready exists");
         synchronized(_Q.create) {
             PreparedStatement q = _Q.create;
             q.setLong(1, server.getId());
@@ -84,6 +94,9 @@ public class AnalysisCenter {
             q.setBoolean(5, ours);
             q.setTimestamp(6, Timestamp.from(next));
             q.executeUpdate();
+            ResultSet keys = q.getGeneratedKeys();
+            keys.next();
+            res.dbid = keys.getLong("id");
         }
         long id=server.getId();
         ACMap.computeIfAbsent(id, k -> new HashSet<>());
@@ -95,23 +108,23 @@ public class AnalysisCenter {
         return ACMap.getOrDefault(server.getId(),Set.of()).contains(this);
     }
 
-    boolean setState(boolean challenged,long nbOfSeconds) {
+    boolean setState(boolean ours,long nbOfSeconds) {
         long theNext=System.currentTimeMillis()+nbOfSeconds*1000;
         try {
             synchronized(_Q.update) {
                 PreparedStatement q = _Q.update;
-                q.setBoolean(1, challenged);
+                q.setBoolean(1, ours);
                 q.setTimestamp(2, new Timestamp(theNext));
-                q.setLong(3, server.getId());
-                q.setInt(4, type.ordinal());
-                q.setInt(5, level);
+                q.setLong(3, dbid);
                 q.executeUpdate();
             }
         } catch(SQLException e) {
+            SosBot.checkDBConnection();
             log.error("failed in AC update for "+this,e);
             return false;
         }
-        this.challenged=challenged;
+        this.ours=ours;
+        this.challenged=false;
         nextChange= Instant.ofEpochMilli(theNext);
         return true;
     }
@@ -124,17 +137,31 @@ public class AnalysisCenter {
         try {
             synchronized(_Q.delete) {
                 PreparedStatement q = _Q.delete;
-                q.setLong(1, server.getId());
-                q.setInt(2, type.ordinal());
-                q.setInt(3, level);
+                q.setLong(1, dbid);
                 q.executeUpdate();
             }
         } catch(SQLException e) {
             log.error("failed in AC delete for "+this,e);
+            SosBot.checkDBConnection();
             return false;
         }
-
+        ACMap.get(server.getId()).remove(this);
         return true;
+    }
+
+    @Override
+    public String serialize() {
+        return Long.toString(dbid);
+    }
+
+
+    public static AnalysisCenter buildFrom(String dbString) {
+        long dbid=Long.parseLong(dbString);
+        for(Set<AnalysisCenter> s:ACMap.values())
+            for(AnalysisCenter ac:s)
+                if(ac.dbid==dbid) return ac;
+
+        return null;
     }
 
     private static queries _Q;
@@ -142,9 +169,9 @@ public class AnalysisCenter {
     static class queries  {
         final PreparedStatement create,update,delete,getAll;
         queries(Connection db)  throws SQLException {
-            create = db.prepareStatement("insert into analysiscenters(server,type,level,challenged,ours,next) values(?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
-            update = db.prepareStatement( "UPDATE analysiscenters set challenged=?,next=? where server=? and type=? and level=?",Statement.RETURN_GENERATED_KEYS );
-            delete = db.prepareStatement( "DELETE FROM analysiscenters  where server=? and type=? and level=?",Statement.RETURN_GENERATED_KEYS );
+            create = db.prepareStatement("insert into analysiscenters(server,type,level,challenged,ours,next) values(?,?,?,?,?,?) returning id", Statement.RETURN_GENERATED_KEYS);
+            update = db.prepareStatement( "UPDATE analysiscenters set ours=?,challenged='f',next=? where id=?");
+            delete = db.prepareStatement( "DELETE FROM analysiscenters  where id=?");
             getAll = db.prepareStatement( "select * FROM analysiscenters  where server=?");
         }
 

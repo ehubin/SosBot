@@ -14,7 +14,15 @@ public class TrapCommands extends ChannelAndCommands {
     public static final String name ="\uD83D\uDC7Dtrap\uD83D\uDC7D";
     public static final String topic="This channel is to keep track of trap event and the related notifications! Enjoy!";
     static final String trapHelp = "Everyone should create one rally with best heroes. Try to schedule the rallies so that they are evenly spread across the first 5 minutes.\n Then you join rallies with as many marches as possible as long as you have 3 heroes available.";
-
+    final Notification<Empty> TrapNotif = new Notification<>(
+            NotifType.Trap,
+            new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
+            (in)->{
+                getChannel(in.server).createMessage("@everyone Trap will take place in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+trapHelp).subscribe();
+                log.info("sending trap notif for minus "+in.before.toString());
+            },
+            Duration.ofDays(2L)
+            );
     TrapCommands() {
         super(name,topic);
         register(new HelpCommand());
@@ -22,18 +30,11 @@ public class TrapCommands extends ChannelAndCommands {
         register(stopNotifyCmd);
         register(infoCmd);
         init();
-        Notification.registerNotifType(NotifType.Trap,new Notification<Void>(
-                new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
-                (in)->{
-                    getChannel(in.server).createMessage("@everyone Trap will take place in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+trapHelp).subscribe();
-                    log.info("sending trap notif for minus "+in.before.toString());
-                },
-                Duration.ofDays(2L)
-        ));
+
     }
 
 
-    static Command notifyCmd = new SimpleCommand("notify",
+    Command notifyCmd = new SimpleCommand("notify",
             new Command.BaseData(true,"notify","Set notification time for trap")) {
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
@@ -51,7 +52,7 @@ public class TrapCommands extends ChannelAndCommands {
                     curServer.removeFollowupCmd(channel,participant);
                     return;
                 }
-                Notification.scheduleNotif(NotifType.Trap, curServer, base);
+                TrapNotif.scheduleNotif(NotifType.Trap, curServer, base);
                 Command.log.info("Scheduled trap notif for " + base);
                 channel.createMessage("Trap notifications now active for event at " + Util.format(base)).subscribe();
                 curServer.removeFollowupCmd(channel, participant);
@@ -59,7 +60,7 @@ public class TrapCommands extends ChannelAndCommands {
             }
         };
     };
-    static Command stopNotifyCmd = new SimpleCommand("stopnotifs",
+    Command stopNotifyCmd = new SimpleCommand("stopnotifs",
             new Command.BaseData(true,"stopnotifs","Disable trap notifications")) {
 
         @Override
@@ -73,7 +74,7 @@ public class TrapCommands extends ChannelAndCommands {
         }
     };
 
-    static Command infoCmd = new SimpleCommand("info",
+    Command infoCmd = new SimpleCommand("info",
             new Command.BaseData(false,"info","Provide information on next trap and its related notifications")) {
 
         @Override

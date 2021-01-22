@@ -61,9 +61,6 @@ abstract  class NCommand<T> {
     abstract boolean matches(String content);
 
     void execute(MsgContext c) {
-        if(isR4Only() && !c.participant.isR4()) {
-            c.send("Sorry, the \"" + getSyntax()+"\" command is for R4s only.");
-        }
         try {
             Optional<T> ret=onMessage(c);
             if(ret.isPresent()) sink.success(ret.get());
@@ -108,6 +105,10 @@ abstract  class NCommand<T> {
             if (baseCmds != null && baseCmds.size()>0) {
                 for (NCommand<?> cmd : baseCmds) {
                     if (cmd.matches(c.content)) {
+                        if(cmd.isR4Only() && !c.participant.isR4()) {
+                            c.send("Sorry, the \"" + cmd.getSyntax()+"\" command is for R4s only.");
+                            return;
+                        }
                         NCommand<?> cloned=cmd.getOne();
                         cloned.mono(c).subscribe((ret)->{},(thr)->{
                             if(thr instanceof Util.UnrecoverableError) {
@@ -168,6 +169,13 @@ abstract  class NCommand<T> {
     static  abstract  class NRegexCommand<T>  extends NCommand<T> {
         Pattern regex;
         NRegexCommand(String regex) {
+            this.regex=Pattern.compile(regex);
+        }
+        NRegexCommand(String regex,BaseData bd) {
+            super(bd);this.regex=Pattern.compile(regex);
+        }
+        NRegexCommand(String regex,BaseData bd,Supplier<NCommand<T>> factory) {
+            super(bd,factory);
             this.regex=Pattern.compile(regex);
         }
         @Override

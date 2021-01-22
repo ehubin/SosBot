@@ -16,6 +16,23 @@ public class ShowdownCommands extends ChannelAndCommands {
     static final String topic="This channel is for Showdown event management! Hope to see you there at next registration!";
     static final Random random= new Random();
     static final String SDRegText ="Please go and register if you have not done so.\n Even if you have, now could be the good time to register even more troops (e.g by activating massive march talent) or by registering more powerful troops trained since your first registration";
+    final Notification<Empty> SDnextWave=new Notification<>(
+            NotifType.SDnextWave,
+            new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+            (in) ->{
+                StringBuilder sb =new StringBuilder("```Best configuration to win is:\n");
+                in.server.Sd.computeBestMatching(sb).append("```");
+                getChannel(in.server).createMessage("<@&"+in.server.R4roleId.asString()+"> showdown swapping phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute\n"+sb.toString()).subscribe();
+                log.info("sending SD next wave notif for minus "+in.before.toString());
+            }
+    );
+    final Notification<Empty> SDcloseReg=new Notification<>(
+        NotifType.SDcloseReg,
+                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
+                (in) ->{
+            getChannel(in.server).createMessage("@everyone showdown registration phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+SDRegText).subscribe();
+            log.info("sending SD next wave notif for minus "+in.before.toString());
+        });
 
     ShowdownCommands() {
         super(name,topic);
@@ -27,23 +44,9 @@ public class ShowdownCommands extends ChannelAndCommands {
         register(new closeCmd());
         register(new nextWaveCmd());
         init();
-        Notification.registerNotifType(NotifType.SDnextWave,new Notification<Void>(
-                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
-                (in) ->{
-                    getChannel(in.server).createMessage("@R4 showdown swapping phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+"Try to perform swapping at the very last minute").subscribe();
-                    log.info("sending SD next wave notif for minus "+in.before.toString());
-                }
-        ));
-        Notification.registerNotifType(NotifType.SDcloseReg,new Notification<Void>(
-                new Duration[] {Duration.ofMinutes(5L),Duration.ofMinutes(30L),Duration.ofMinutes(120L)},
-                (in) ->{
-                    getChannel(in.server).createMessage("@everyone showdown registration phase will close in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n"+SDRegText).subscribe();
-                    log.info("sending SD next wave notif for minus "+in.before.toString());
-                }
-        ));
     }
 
-    static Command registerCmd = new SimpleCommand("register",
+    Command registerCmd = new SimpleCommand("register",
             new Command.BaseData(false,
                     "register",
                     "register to showdown event to get your lane assignment")) {
@@ -87,7 +90,7 @@ public class ShowdownCommands extends ChannelAndCommands {
         };
     };
 
-    static Command openCmd = new RegexCommand(Pattern.compile("open\\s+(\\d+.?\\d*)", Pattern.CASE_INSENSITIVE),
+    Command openCmd = new RegexCommand(Pattern.compile("open\\s+(\\d+.?\\d*)", Pattern.CASE_INSENSITIVE),
                                                 new Command.BaseData(true,"open <power>",
                                                         "Opens showdown event with given power limit")) {
         @Override
@@ -114,7 +117,7 @@ public class ShowdownCommands extends ChannelAndCommands {
                 if(curServer.Sd.save()) {
                     curServer.Sd.cleanUp();
 
-                    Notification.scheduleNotif(NotifType.SDcloseReg,curServer,regTime);
+                    SDcloseReg.scheduleNotif(NotifType.SDcloseReg,curServer,regTime);
                     channel.createMessage("Successfully opened Showdown with power threshold at " + curServer.Sd.threshold).subscribe();
                 } else {
                     channel.createMessage("Unexpected error while trying to open showdown").subscribe();
@@ -236,7 +239,7 @@ public class ShowdownCommands extends ChannelAndCommands {
         }
     }
 
-    static class nextWaveCmd extends SimpleCommand {
+    class nextWaveCmd extends SimpleCommand {
         nextWaveCmd() {
             super("nextwave",
                     new Command.BaseData(true,"nextwave","Input enemy data for next wave to get matching advice"),
@@ -304,7 +307,7 @@ public class ShowdownCommands extends ChannelAndCommands {
             protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
                 try {
                     Instant swapTime= Util.getParser().parseOne(content.trim());
-                    Notification.scheduleNotif(NotifType.SDnextWave,curServer,swapTime);
+                    SDnextWave.scheduleNotif(NotifType.SDnextWave,curServer,swapTime);
                     curServer.removeFollowupCmd(channel,participant);
                     channel.createMessage("You are done, R4 will be reminded when swapping needs to happen!").subscribe();
                 } catch(ParseException e) {
@@ -314,7 +317,7 @@ public class ShowdownCommands extends ChannelAndCommands {
         };
     }
 
-    static Command lanesCmd = new SimpleCommand("lanes",
+    Command lanesCmd = new SimpleCommand("lanes",
             new Command.BaseData(false,"lanes","Shows who is registered in which lane")) {
         @Override
         protected void execute(String content, Participant participant, MessageChannel channel, Server curServer) {
@@ -326,7 +329,7 @@ public class ShowdownCommands extends ChannelAndCommands {
             }
         }
     };
-    static Command r4regCmd = new RegexCommand(Pattern.compile("r4reg(.*\\S)\\s+(\\d+.?\\d*)\\s+([lrc])", Pattern.CASE_INSENSITIVE),
+    Command r4regCmd = new RegexCommand(Pattern.compile("r4reg(.*\\S)\\s+(\\d+.?\\d*)\\s+([lrc])", Pattern.CASE_INSENSITIVE),
             new Command.BaseData(true,"r4reg <name> <power> <lane>",
                     "Allows to register a participant that did not go through the bot. Power in million and lane should be l,r or c")) {
         @Override

@@ -52,13 +52,12 @@ public class SosBot {
            log.info("Ready!");
            myId=re.getSelf().getId();
            ChannelAndCommands.initAll();
-           SosBot.initAll();
-           Notification.initFromDb();
+           SosBot.initMsgCallbacks();
         });
         theGw.onDisconnect().block();
     } //end of main
 
-    private static void initAll() {
+    private static void initMsgCallbacks() {
         theGw.on(MessageCreateEvent.class).map(SosBot::processMessage).onErrorContinue((error, event)->{
             try {
                 log.error("Uncaught exception in process method",error);

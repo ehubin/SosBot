@@ -18,51 +18,177 @@ import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
 
 @Slf4j
 public class AnalysisCenterCommands extends ChannelAndCommands {
-        public static final String name ="\uD83D\uDDA5analysis-center\uD83D\uDDA5";
-        public static final String topic ="This channel allows to keep track of our Analysis centers  and get notified when they need to be watched/defended";
-        AnalysisCenterCommands() {
-            super(name,topic);
-            register(new NCommand.HelpCommand());
-            register(listCmd);
-            register(new createCmd());
-            register(listChannels);
-            register(testCountdown);
-            init();
-            Notification.registerNotifType(NotifType.defendAC,new Notification<Void>(
-                    new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(6)},
-                    (in)->{
-                        getChannel(in.server).createMessage("@everyone Trap will take place in "+ Util.format(in.before)+" at "+ Util.hhmm.format(in.basetime)+"\n").subscribe();
-                        log.info("sending trap notif for minus "+in.before.toString());
-                    },
-                    Duration.ofDays(2L)
-            ));
-        }
+    public static final String name ="\uD83D\uDDA5analysis-center\uD83D\uDDA5";
+    public static final String topic ="This channel allows to keep track of our Analysis centers  and get notified when they need to be watched/defended";
+    Notification<AnalysisCenter> defendACNotif=new Notification<>(
+        NotifType.defendAC,
+        new Duration[] {Duration.ofMinutes(1L),Duration.ofMinutes(30L),Duration.ofHours(2)},
+        (in)->{
+            log.info("in ac defend notif");
+            if(in.data != null) {
+                AnalysisCenter ac=in.data;
+                getChannel(in.server).createMessage("@everyone "+ac.toString()+"\n we count on you to defend it!").subscribe();
+            } else {
+                log.error("Analysis center notification has no data: cannot send it");
+            }
+        },
+        Duration.ofDays(4L),AnalysisCenter::buildFrom
+        );
 
-        static NCommand.SimpleCommand<Void> listCmd= new NCommand.SimpleCommand<>("list",
-                new NCommand.BaseData(false, "list", "Provide a list of Alliance's Analysis centers")) {
+    AnalysisCenterCommands() {
+        super(name,topic);
+        register(new NCommand.HelpCommand());
+        register(listCmd);
+        register(new createCmd());
+        register(new deleteCmd());
+        register(new weLostCmd());
+        register(new weCapturedCmd());
+        register(listChannels);
+        register(testCountdown);
+        init();
+    }
 
-            @Override
-            Optional<Void> onMessage(MsgContext c) {
-                Set<AnalysisCenter> allAc=AnalysisCenter.getAll(c.curServer);
-                if(allAc.isEmpty()) {
-                    c.send("No analysis centers for this server");
-                    return Optional.empty();
-                }
-                StringBuilder sb=new StringBuilder();
-                int i=0;
-                for(AnalysisCenter ac:allAc) {
-                    sb.append("**").append(++i).append(".** ").append(ac).append("\n");
-                }
-                sb.append( "\n\uD83D\uDC4D=under our control.\n\uD83D\uDC4E=under enemy control") ;
-                c.send(sb.toString());
+    NCommand.SimpleCommand<Void> listCmd= new NCommand.SimpleCommand<>("list",
+            new NCommand.BaseData(false, "list", "Provide a list of Alliance's Analysis centers")) {
+
+        @Override
+        Optional<Void> onMessage(MsgContext c) {
+            Set<AnalysisCenter> allAc=AnalysisCenter.getAll(c.curServer);
+            if(allAc.isEmpty()) {
+                c.send("No analysis centers for this server");
                 return Optional.empty();
             }
-        };
+            StringBuilder sb=new StringBuilder();
+            int i=0;
+            for(AnalysisCenter ac:allAc) {
+                sb.append("**").append(++i).append(".** ").append(ac).append("\n");
+            }
+            sb.append( "\n\uD83D\uDC4D=We control, \uD83D\uDC4E= Enemy control") ;
+            sb.append( "\n\uD83D\uDEE1=Protected status, \u2694= Challenged status") ;
+            c.send(sb.toString());
+            return Optional.empty();
+        }
+    };
+    static class  deleteCmd extends NCommand.NRegexCommand<Void> {
+        deleteCmd() {
+            super("delete (\\d{1,2})",
+                new NCommand.BaseData(true,
+                        "delete <nb>",
+                        "delete one of the AC's from the list by providing its number."));
+        }
 
-        static NCommand<Void> testCountdown = new NCommand.SimpleCommand<>("countdown") {
+        @Override
+        Optional<Void> onMessage(Matcher ma, MsgContext c) {
+            if(ma.matches()) {
+                int nb=Integer.parseInt(ma.group(1));
+                int i=0;
+                Set<AnalysisCenter> allAc=AnalysisCenter.getAll(c.curServer);
+                if(allAc.isEmpty()) {
+                    c.send("There are no ACs to delete");
+                }
+                for(AnalysisCenter ac:allAc) {
+                    if (++i == nb) {
+                        if(ac.delete()) {
+                            c.send("Successfully deleted "+ac);
+                        } else {
+                            c.send("Unexpected problem...");
+                        }
+                        return Optional.empty();
+                    }
+                }
+                c.send("No AC matching number <"+nb+">");
+            }
+            return Optional.empty();
+        }
+    }
+    static class  weLostCmd extends NCommand.NRegexCommand<Void> {
+        weLostCmd() {
+            super("welost (\\d{1,2})",
+                    new NCommand.BaseData(true, "welost <nb>", "update an AC after it has been captured by enemy"),
+                    weLostCmd::new);
+        }
+        AnalysisCenter theAc;
+        @Override
+        Optional<Void> onMessage(Matcher ma, MsgContext c) {
+            if(ma.matches()) {
+                int nb=Integer.parseInt(ma.group(1));
+                int i=0;
+                Set<AnalysisCenter> allAc=AnalysisCenter.getAll(c.curServer);
+                if(allAc.isEmpty()) {
+                    throw new Util.UnrecoverableError("There are no ACs to loose");
+                }
+                for(AnalysisCenter ac:allAc) {
+                    if (++i == nb) {
+                        theAc = ac;
+                        c.send("Please enter in how long will the lost AC be in protected mode for (e.g 2d 3:30:30)");
+                        return Optional.empty();
+                    }
+                }
+                throw new Util.UnrecoverableError("No AC matching number <"+nb+">");
+            }
+            return Optional.empty();
+        }
+
+        @Override
+        Mono<Void> mono(MsgContext c) {
+            return  super.mono(c).then(new readDuration().mono(c)).flatMap((duration)->{
+                if(theAc.setState(false,duration.getSeconds())) {
+                    c.send("AC loss has been recorded:\n"+theAc);
+                    return Mono.empty();
+                } else {
+                    return Mono.error(new Util.UnrecoverableError("Unexpected error while recording the loss..."));
+                }
+            }).then();
+        }
+    }
+
+     static class weCapturedCmd extends NCommand.NRegexCommand<Void> {
+        AnalysisCenter theAC=null;
+         weCapturedCmd() {
+             super("wecaptured (\\d{1,2})",
+                     new NCommand.BaseData(true, "wecaptured <nb>", "update an AC status after we just captured it"),
+                     weCapturedCmd::new);
+         }
+
+        @Override
+        Optional<Void> onMessage(Matcher ma, MsgContext c) {
+            if(ma.matches()) {
+                int nb=Integer.parseInt(ma.group(1));
+                int i=0;
+                Set<AnalysisCenter> allAc=AnalysisCenter.getAll(c.curServer);
+                if(allAc.isEmpty()) {
+                    c.send("There are no ACs to delete");
+                }
+                for(AnalysisCenter ac:allAc) {
+                    if (++i == nb) {
+                        theAC=ac;
+                        c.send("Enter how long the newly captured AC will be protected for");
+                        return Optional.empty();
+                    }
+                }
+                c.send("No AC matching number <"+nb+">");
+            }
+            return Optional.empty();
+        }
+
+         @Override
+         Mono<Void> mono(MsgContext c) {
+             return super.mono(c).then(new readDuration().mono(c)).flatMap((duration)->{
+                 if(theAC.setState(true,duration.getSeconds())) {
+                     c.send("AC capture has been recorded:\n"+theAC);
+                     return Mono.empty();
+                 } else {
+                     return Mono.error(new Util.UnrecoverableError("Unexpected error while recording the loss..."));
+                 }
+             }).then();
+         }
+     }
+
+        NCommand<Void> testCountdown = new NCommand.SimpleCommand<>("countdown") {
 
             @Override
             Optional<Void> onMessage(MsgContext ctxt) {
@@ -82,7 +208,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands {
             }
 
         };
-        static NCommand<Void> listChannels = new NCommand<>() {
+        NCommand<Void> listChannels = new NCommand<>() {
             final StringBuilder sb=new StringBuilder();
             final ArrayList<Channel> res=new ArrayList<>();
             @Override
@@ -141,7 +267,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands {
             }
         };
 
-    static class createCmd extends  NCommand.SimpleCommand<Void> {
+    class createCmd extends  NCommand.SimpleCommand<Void> {
         createCmd() {
             super("create",
                     new NCommand.BaseData(true, "create", "creates a new Analysis center"),
@@ -192,6 +318,7 @@ public class AnalysisCenterCommands extends ChannelAndCommands {
                             log.error("Error while saving AC in database", e);
                             return Mono.error(new Exception("Error while saving AC in database", e));
                         }
+                        defendACNotif.scheduleNotif(NotifType.defendAC, c.curServer, ac.nextDefend(),true,true,ac);
                         c.send("Analysis center succesfully created! " + ac);
                         return Mono.empty();
                     });

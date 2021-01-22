@@ -15,27 +15,31 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
 
 import reactor.core.publisher.Mono;
+import reactor.util.retry.RetryBackoffSpec;
 
 import java.sql.*;
 
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Date;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+
 enum SDPos { Undef,Left,Center,Right}
 
 @Slf4j
 public class Server {
     private static final HashMap<Snowflake,Server> KnownServers=new HashMap<>();
-    private  AtomicBoolean inInitMethod=new AtomicBoolean(false);
+    private static final ConcurrentHashMap<Snowflake,Boolean> lockMap = new ConcurrentHashMap<>();
 
     private final HashMap<ChannelPartKey, Command> followUpCmd=new HashMap<>();
     private final HashMap<ChannelPartKey, NCommand<?>> FollowupNCommand=new HashMap<>();
@@ -52,28 +56,41 @@ public class Server {
         RRevent= new RREvent(guild);
         newRRevent= new RREvent(guild);
     }
+    private static final RetryBackoffSpec getServerRetryPolicy =RetryBackoffSpec
+            .backoff(4, Duration.ofMillis(100))
+            .filter((t)->t instanceof ServerInitInProgress);
+
+    @SuppressWarnings("unused")
     public static Mono<Server> getServerFromId(long id) {
-        return getServerFromId(Snowflake.of(id));
+        return getInternalServerFromId(Snowflake.of(id)).retryWhen(getServerRetryPolicy);
     }
     public static Mono<Server> getServerFromId(Snowflake id) {
+        return getInternalServerFromId(id).retryWhen(getServerRetryPolicy);
+    }
+    private static Mono<Server> getInternalServerFromId(Snowflake id) {
+        //log.info("stacktrace dump",new Exception());
         if(!KnownServers.containsKey(id)) {
-            return SosBot.getDiscordGateway().getGuildById(id).onErrorResume(e->{
-                if(e.getMessage().matches("GET.*message=Missing Access.*")) {
-                    log.warn("ignoring guild permission error for id="+id+ " not a big deal");
-                    return Mono.empty();
-                } else {
-                    log.error("Unexpected error while trying to retrieve guild data for id="+id);
-                    return Mono.error(e);
-                }
-            })
-                    .flatMap(g->{
-                Server newOne=new Server(g);
-                KnownServers.put(id,newOne);
-                Mono<Void> dbInit=newOne.initFromDB();
-                return dbInit.then(Mono.just(newOne));
-            });
-        }
-        return Mono.just(KnownServers.get(id));
+            if (lockMap.putIfAbsent(id, true) == null) { // i am first i do the init
+                return SosBot.getDiscordGateway().getGuildById(id).onErrorResume(e -> {
+                    if (e.getMessage().matches("GET.*message=Missing Access.*")) {
+                        log.warn("ignoring guild permission error for id=" + id + " not a big deal");
+                        return Mono.empty();
+                    } else {
+                        log.error("Unexpected error while trying to retrieve guild data for id=" + id);
+                        return Mono.error(e);
+                    }
+                })
+                .flatMap(g -> {
+                    Server newOne = new Server(g);
+                    KnownServers.put(id, newOne);
+                    Mono<Void> dbInit = newOne.initFromDB();
+                    return dbInit.then(Mono.just(newOne));
+                });
+            } else { // somebody already initializing the server need to wait and retry
+                log.info("init conflicts");
+                return Mono.error(new ServerInitInProgress());
+            }
+        } else return Mono.just(KnownServers.get(id)); //server already known just return it
     }
 
     public long getId() {
@@ -294,13 +311,9 @@ public class Server {
                 }
             }
 
-            // only one execution of this at a time
-            if(!inInitMethod.compareAndExchange(false,true)) {
-                    log.info("init method for "+guild.getName());
-                    updateDiscordServerAtFirstConnection();
-            } else {
-                log.info("initMethod was busy for "+guild.getName());
-            }
+
+            updateDiscordServerAtFirstConnection();
+
 
             synchronized (_Q.selectParticipants) {
                 _Q.selectParticipants.setLong(1, getId());
@@ -337,6 +350,7 @@ public class Server {
                 }
             }
             AnalysisCenter.initFromDb(this);
+            Notification.initFromDb(this);
 
         } catch(SQLException e) {
             e.printStackTrace();
@@ -406,7 +420,6 @@ public class Server {
                             });
                         }
                     }
-                    inInitMethod.set(false);
                 })).subscribe();
 
         //create R4 role if it does not already exists
@@ -758,6 +771,7 @@ public class Server {
             return true;
         }
     }
+    static class ServerInitInProgress extends Exception {}
 }
 
 

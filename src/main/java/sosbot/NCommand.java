@@ -88,15 +88,16 @@ abstract  class NCommand<T> {
 
 
     static void findAndExec(MsgContext c) {
+
         Server.ChannelPartKey k=new Server.ChannelPartKey(c.channel,c.participant);
-        Command followUp= c.curServer.getFollowUpCmd(k);
-        if(followUp!= null && followUp.matches(c.content)) {
-            followUp.execute(c.content,c.participant,c.channel,c.curServer);
+        followupOld followUp= c.curServer.getFollowUpCmd(k);
+        if(followUp!= null && followUp.cmd.matches(c.content)) {
+            followUp.cmd.execute(c.content,c.participant,c.channel,c.curServer);
             return;
         }
-        NCommand<?> nFollowUp = c.curServer.getNFollowUpCmd(k);
+        followup nFollowUp = c.curServer.getNFollowUpCmd(k);
         if(nFollowUp!= null) {
-            nFollowUp.execute(c);
+            nFollowUp.cmd.execute(c);
             return;
         }
         if(c.channel.getType() == Channel.Type.GUILD_TEXT) {
@@ -163,6 +164,16 @@ abstract  class NCommand<T> {
         boolean matches(String content) {
             return content.trim().equalsIgnoreCase(theCmd);
         }
+    }
+    static class followup {
+        NCommand<?> cmd;
+        int retry =0;
+        followup(NCommand<?> cmd) {this.cmd=cmd;}
+    }
+    static class followupOld {
+        Command cmd;
+        int retry =0;
+        followupOld(Command cmd) {this.cmd=cmd;}
     }
 
 

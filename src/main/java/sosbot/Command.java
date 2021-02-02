@@ -56,9 +56,9 @@ public abstract class Command {
     abstract protected boolean matches(String content);
 
     static void findAndExec(String content, Participant participant, MessageChannel channel, Server curServer) {
-        Command followUp= curServer.getFollowUpCmd(new Server.ChannelPartKey(channel,participant));
-        if(followUp!= null && followUp.matches(content)) {
-            followUp.execute(content,participant,channel,curServer);
+        NCommand.followupOld followUp= curServer.getFollowUpCmd(new Server.ChannelPartKey(channel,participant));
+        if(followUp!= null && followUp.cmd.matches(content)) {
+            followUp.cmd.execute(content,participant,channel,curServer);
             return;
         }
         if(channel.getType() == Channel.Type.GUILD_TEXT) {

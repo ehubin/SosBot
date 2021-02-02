@@ -41,8 +41,8 @@ public class Server {
     private static final HashMap<Snowflake,Server> KnownServers=new HashMap<>();
     private static final ConcurrentHashMap<Snowflake,Boolean> lockMap = new ConcurrentHashMap<>();
 
-    private final HashMap<ChannelPartKey, Command> followUpCmd=new HashMap<>();
-    private final HashMap<ChannelPartKey, NCommand<?>> FollowupNCommand=new HashMap<>();
+    private final HashMap<ChannelPartKey, NCommand.followupOld> followUpCmd=new HashMap<>();
+    private final HashMap<ChannelPartKey, NCommand.followup> FollowupNCommand=new HashMap<>();
     Guild guild;
     Snowflake R4roleId=null;
     RREvent RRevent,newRRevent;
@@ -168,6 +168,7 @@ public class Server {
             log.error("error openning cc",e);
             return false;
         }
+        getRegisteredCCparticipants(false).forEach(p->p.registeredToCC=false);
         CCactive=true;
         CCstart=start;
         return true;
@@ -467,15 +468,15 @@ public class Server {
         return res;
     }
     // returns follow-up command for participant p in that server
-    public Command getFollowUpCmd(ChannelPartKey k) {
+    public NCommand.followupOld getFollowUpCmd(ChannelPartKey k) {
         return followUpCmd.get(k);
     }
 
     public void setFollowUpCmd(MessageChannel channel, Participant p, Command fup) {
-        followUpCmd.put(new ChannelPartKey(channel,p),fup);
+        followUpCmd.put(new ChannelPartKey(channel,p),new NCommand.followupOld(fup));
     }
     public void setFollowUpNCmd(MessageChannel channel, Participant p, NCommand<?> fup) {
-        FollowupNCommand.put(new ChannelPartKey(channel,p),fup);
+        FollowupNCommand.put(new ChannelPartKey(channel,p),new NCommand.followup(fup));
     }
     public void removeFollowupCmd(MessageChannel ch, Participant p) {
         ChannelPartKey k=new ChannelPartKey(ch,p);
@@ -490,7 +491,7 @@ public class Server {
         return sessions.get(memberId.asLong());
     }
 
-    public NCommand<?> getNFollowUpCmd(ChannelPartKey k) {
+    public NCommand.followup getNFollowUpCmd(ChannelPartKey k) {
         return FollowupNCommand.get(k);
     }
 

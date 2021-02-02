@@ -3,7 +3,7 @@ package sosbot;
 import io.timeandspace.cronscheduler.CronScheduler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.builder.HashCodeBuilder;
-import reactor.core.publisher.Mono;
+import reactor.util.annotation.NonNull;
 import reactor.util.annotation.Nullable;
 
 import java.sql.*;
@@ -48,6 +48,7 @@ public  class Notification<T extends dbready> {
         this.dbFactory=dbfactory;
         if(All[type.ordinal()] == null) All[type.ordinal()] = this;
         else throw new Util.UnrecoverableError("2 objects for notif type "+type);
+
     }
 
     T buildData(String dbStr) { return dbStr==null?null:dbFactory.apply(dbStr);}
@@ -68,8 +69,7 @@ public  class Notification<T extends dbready> {
 
     void scheduleNotif(NotifType type, Server srv, Instant basetime, boolean updateDB, boolean cancelPrevious, @Nullable T data) {
 
-
-        ServerNotif sn=new ServerNotif(srv,type);
+        ServerNotif sn=new ServerNotif(srv,type,data==null?"":data.serialize());
         if(cancelPrevious) {
             sn.cancelAll();
         }
@@ -140,7 +140,7 @@ public  class Notification<T extends dbready> {
         }
         if(taskList.size() >0) {
             activeNotifs.put(sno,taskList);
-            new ServerNotif(srv,type).register(basetime);
+            sn.register(basetime);
             log.info("Created notification for "+sno);
         }
         else{
@@ -156,7 +156,7 @@ public  class Notification<T extends dbready> {
                         log.error("notif cleanup cleaned "+nb+" items!!");
                     }
                     activeNotifs.remove(sno);
-                    new ServerNotif(srv,type).unregister(basetime);
+                    sn.unregister(basetime);
                 } catch(SQLException e) {
                     log.error("notif cleanup DB error",e);
                     SosBot.checkDBConnection();
@@ -188,24 +188,29 @@ public  class Notification<T extends dbready> {
         return All[type.ordinal()];
     }
 
-
     public static int cancelAllNotifs(NotifType type, Server curServer) {
-        ServerNotif sn=new ServerNotif(curServer,type);
+        return cancelAllNotifs(type, curServer,"");
+    }
+    public static int cancelAllNotifs(NotifType type, Server curServer,String data) {
+        ServerNotif sn=new ServerNotif(curServer,type,data);
         return sn.cancelAll();
     }
     //allows to index notifications for a given Server/type of notification
     static class ServerNotif {
-        ServerNotif(Server s, NotifType t) {srv=s;type=t; }
+        ServerNotif(Server s, NotifType t) {srv=s;type=t; data="";}
+        ServerNotif(Server s, NotifType t,@NonNull String data) {srv=s;type=t; this.data=data;}
         Server srv;
         NotifType type;
+        String data;
         public boolean equals(Object o) {
             return o instanceof ServerNotif && srv.getId()==(((ServerNotif)o).srv.getId())
-                    && type == ((ServerNotif)o).type;
+                    && type == ((ServerNotif)o).type &&
+                    data.equals(((ServerNotif)o).data);
         }
         @Override
         public int hashCode() {
             HashCodeBuilder hcb = new HashCodeBuilder();
-            return hcb.append(srv.getId()).append(type).hashCode();
+            return hcb.append(srv.getId()).append(type).append(data).hashCode();
         }
 
         public void register(Instant basetime) {

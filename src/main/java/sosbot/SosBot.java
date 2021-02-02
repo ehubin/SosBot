@@ -154,8 +154,9 @@ public class SosBot {
             return event;
         }
         final Member m=event.getMember().get();
-        log.info("Received "+content+" from "+m.getDisplayName());
+
         Server.getServerFromId(event.getGuildId().get()).flatMap(srv->{
+            log.info("[["+srv.guild.getName()+"]] "+content+" from "+m.getDisplayName());
             Participant p= srv.getOrCreateParticipant(m);
             if(p==null) {
                 log.error("Participant not found");

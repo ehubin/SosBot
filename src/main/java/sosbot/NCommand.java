@@ -142,7 +142,7 @@ abstract  class NCommand<T> {
                         }
                 }
             }
-            log.info("No matching command for: " + c.content);
+            //log.info("No matching command for: " + c.content);
         }
     }
     static void registerCmds(String channelName,List<NCommand<?>> l) {ChannelCmds.put(channelName,l);}

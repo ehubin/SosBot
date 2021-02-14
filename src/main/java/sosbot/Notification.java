@@ -142,6 +142,7 @@ public  class Notification<T extends dbready> {
             activeNotifs.put(sno,taskList);
             sn.register(basetime);
             log.info("Created notification for "+sno);
+            log.info("stack",new Exception());
         }
         else{
             log.warn("Did not schedule any task for "+type);
@@ -238,10 +239,24 @@ public  class Notification<T extends dbready> {
                         task.cancel(false);
                 }
                 activeNotifs.put(snt,new ArrayList<>());
-                snt.removeFromDB();
             }
+            removeFromDB();
             notifIndex.put(this,new HashSet<>());
             return res;
+        }
+        public void removeFromDB() {
+            try {
+                synchronized (_Q.deleteNotif) {
+                    PreparedStatement n = data.equals("") ? _Q.deleteNotif:_Q.deleteDataNotif ;
+                    n.setLong(1, srv.getId());
+                    n.setString(2, type.name());
+                    if(!data.equals("")) n.setString(3,data);
+                    n.executeUpdate();
+                }
+            } catch (SQLException e) {
+                log.error("Notif db delete error", e);
+                SosBot.checkDBConnection();
+            }
         }
     }
 
@@ -282,22 +297,7 @@ public  class Notification<T extends dbready> {
         public String toString() {
             return type+" event for "+srv.guild.getName()+" server at "+time;
         }
-        public void removeFromDB() {
-            try {
-                synchronized (_Q.deleteNotif) {
-                    PreparedStatement n = _Q.deleteNotif;
-                    n.setLong(1, srv.getId());
-                    n.setString(2, type.name());
-                    n.setTimestamp(3, Timestamp.from(time));
-                    if(n.executeUpdate()!= 1) {
-                        log.warn("Nothing deleted for "+this);
-                    }
-                }
-            } catch (SQLException e) {
-                log.error("Notif db delete error", e);
-                SosBot.checkDBConnection();
-            }
-        }
+
     }
 
     static void initFromDb(Server srv) {
@@ -314,12 +314,12 @@ public  class Notification<T extends dbready> {
             synchronized(_Q.getAllNotifs) {
                 _Q.getAllNotifs.setLong(1,srv.getId());
                 ResultSet rs=_Q.getAllNotifs.executeQuery();
-
                 while(rs.next()) {
                     final Instant inst = rs.getTimestamp("basetime").toInstant();
                     final NotifType nt=NotifType.valueOf(rs.getString("notif"));
                     final String dataStr=rs.getString("data");
                     final Notification<?> notif=All[nt.ordinal()];
+                    log.info("notif "+notif);
                     notif.scheduleNotif(nt,
                             srv,
                             inst,
@@ -336,12 +336,13 @@ public  class Notification<T extends dbready> {
     private static queries _Q;
     static void initQueries(Connection db) throws SQLException { _Q=new queries(db); }
     private static class queries {
-        final PreparedStatement insertNotif,updateNotif,getAllNotifs,deleteNotif;
+        final PreparedStatement insertNotif,updateNotif,getAllNotifs,deleteNotif,deleteDataNotif;
         queries(Connection db) throws SQLException {
             insertNotif = db.prepareStatement("insert into notifications(server,notif,basetime,data) values(?,?,?,?)");
             updateNotif = db.prepareStatement("update notifications set basetime=? where server=? and notif=?");
             getAllNotifs =db.prepareStatement( "select * from notifications where server=?");
-            deleteNotif=db.prepareStatement( "delete from notifications where server=? and notif=? and basetime=?");
+            deleteNotif=db.prepareStatement( "delete from notifications where server=? and notif=?");
+            deleteDataNotif=db.prepareStatement( "delete from notifications where server=? and notif=? data=?");
         }
     }
 

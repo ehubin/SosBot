@@ -81,6 +81,7 @@ public class Server {
                     }
                 })
                 .flatMap(g -> {
+                    log.info("Initializing "+g.getName());
                     Server newOne = new Server(g);
                     KnownServers.put(id, newOne);
                     Mono<Void> dbInit = newOne.initFromDB();

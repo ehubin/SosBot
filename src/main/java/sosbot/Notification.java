@@ -311,8 +311,8 @@ public  class Notification<T extends dbready> {
                 f.cancel(true);
             }
         }
-        activeNotifs.clear();
-        notifIndex.clear();
+        activeNotifs.keySet().removeIf( sn->sn.srv.equals(srv));
+        notifIndex.keySet().removeIf( sno->sno.srv.equals(srv));
 
         try {
             synchronized(_Q.getAllNotifs) {

@@ -56,6 +56,14 @@ public class Server {
         RRevent= new RREvent(guild);
         newRRevent= new RREvent(guild);
     }
+    @Override
+    public boolean equals(Object o) {
+        if(o instanceof Server) {
+            Server other =(Server)o;
+            return guild.getId().equals(other.guild.getId());
+        }
+        return false;
+    }
     private static final RetryBackoffSpec getServerRetryPolicy =RetryBackoffSpec
             .backoff(4, Duration.ofMillis(100))
             .filter((t)->t instanceof ServerInitInProgress);

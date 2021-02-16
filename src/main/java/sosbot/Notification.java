@@ -142,7 +142,7 @@ public  class Notification<T extends dbready> {
             activeNotifs.put(sno,taskList);
             sn.register(basetime);
             log.info("Created notification for "+sno);
-            log.info("stack",new Exception());
+            //log.info("stack",new Exception());
         }
         else{
             log.warn("Did not schedule any task for "+type);
@@ -220,10 +220,14 @@ public  class Notification<T extends dbready> {
         }
         public void unregister(Instant basetime) {
             Set<Instant> timings=notifIndex.get(this);
-            if(timings != null) timings.remove(basetime);
+            if(timings != null) {
+                timings.remove(basetime);
+                log.info("==> removing notif for "+this+" at "+basetime);
+            }
         }
 
         public int cancelAll() {
+            log.info("==> removing all notifs for "+this);
             int res=0;
             Set<Instant> existing=notifIndex.get(this);
             if(existing==null || existing.size()<=0) {
